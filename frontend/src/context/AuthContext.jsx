@@ -8,7 +8,8 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(localStorage.getItem('gl_token'))
   const [loading, setLoading] = useState(true)
 
-  axios.defaults.baseURL = 'http://localhost:8000'
+  // axios.defaults.baseURL = 'http://localhost:8000'
+  axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
   useEffect(() => {
     if (token) {
