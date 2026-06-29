@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Send, Minimize2, Maximize2, Circle, Loader2, SmilePlus } from 'lucide-react'
+import { X, Send, Minimize2, Maximize2, Circle, Loader2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import axios from 'axios'
@@ -65,41 +65,46 @@ function MessageBubble({ msg, isSelf, showAvatar, friend, accentColors, isDark }
   )
 }
 
-export default function DMChatPanel({ friend, onClose }) {
+// onNewMessage(senderName) — called when a message arrives from the friend
+export default function DMChatPanel({ friend, onClose, onNewMessage }) {
   const { user } = useAuth()
   const { dark: isDark } = useTheme()
   const accentColors = { primary: '#a855f7', secondary: '#7c3aed' }
+
   const [messages, setMessages]   = useState([])
   const [input, setInput]         = useState('')
   const [loading, setLoading]     = useState(true)
   const [minimized, setMinimized] = useState(false)
   const [wsReady, setWsReady]     = useState(false)
   const [isTyping, setIsTyping]   = useState(false)
+
   const wsRef       = useRef(null)
   const bottomRef   = useRef(null)
   const inputRef    = useRef(null)
   const typingTimer = useRef(null)
+  // Track if panel is minimized in a ref so the ws handler can read it
+  const minimizedRef = useRef(false)
 
   const roomId = getRoomId(user?.id, friend?.id)
   const token  = localStorage.getItem('gl_token')
 
   // ── theme shortcuts ───────────────────────────────────────
-  const panelBg    = isDark ? '#111827' : 'white'
-  const headerBg   = isDark
+  const panelBg          = isDark ? '#111827' : 'white'
+  const headerBg         = isDark
     ? `linear-gradient(135deg, ${accentColors.primary}20, #8b5cf620)`
     : `linear-gradient(135deg, ${accentColors.primary}15, #8b5cf615)`
-  const borderColor  = isDark ? '#374151' : '#e2e8f0'
-  const msgAreaBg    = isDark ? '#0f172a' : '#f8fafc'
-  const inputAreaBg  = isDark ? '#111827' : 'white'
-  const inputBg      = isDark ? '#1f2937' : '#f1f5f9'
-  const inputText    = isDark ? '#f3f4f6' : '#1e293b'
+  const borderColor      = isDark ? '#374151' : '#e2e8f0'
+  const msgAreaBg        = isDark ? '#0f172a' : '#f8fafc'
+  const inputAreaBg      = isDark ? '#111827' : 'white'
+  const inputBg          = isDark ? '#1f2937' : '#f1f5f9'
+  const inputText        = isDark ? '#f3f4f6' : '#1e293b'
   const inputPlaceholder = isDark ? 'placeholder-gray-500' : 'placeholder-slate-400'
-  const inputFocus   = isDark ? 'focus:border-purple-500' : 'focus:border-blue-300'
-  const textPrimary  = isDark ? 'text-gray-100' : 'text-slate-900'
-  const textMuted    = isDark ? 'text-gray-500' : 'text-slate-400'
-  const dividerBg    = isDark ? 'bg-gray-700' : 'bg-slate-200'
-  const typingBg     = isDark ? 'bg-gray-700' : 'bg-slate-200'
-  const typingDot    = isDark ? 'bg-gray-400' : 'bg-slate-400'
+  const inputFocus       = isDark ? 'focus:border-purple-500' : 'focus:border-blue-300'
+  const textPrimary      = isDark ? 'text-gray-100' : 'text-slate-900'
+  const textMuted        = isDark ? 'text-gray-500' : 'text-slate-400'
+  const dividerBg        = isDark ? 'bg-gray-700' : 'bg-slate-200'
+  const typingBg         = isDark ? 'bg-gray-700' : 'bg-slate-200'
+  const typingDot        = isDark ? 'bg-gray-400' : 'bg-slate-400'
   const minimizeBtnHover = isDark ? 'hover:bg-gray-700' : 'hover:bg-slate-100'
   const closeBtnHover    = isDark ? 'hover:bg-red-500/20 hover:text-red-400' : 'hover:bg-red-50 hover:text-red-500'
   const iconColor        = isDark ? 'text-gray-400' : 'text-slate-400'
@@ -121,7 +126,6 @@ export default function DMChatPanel({ friend, onClose }) {
   useEffect(() => {
     loadHistory()
 
-    // Use wss:// on HTTPS (production), ws:// on HTTP (local dev)
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/dm/ws/dm/${roomId}?token=${token}`)
     wsRef.current = ws
@@ -131,6 +135,7 @@ export default function DMChatPanel({ friend, onClose }) {
     ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data)
+
         if (data.type === 'typing') {
           if (data.user_id !== user?.id) {
             setIsTyping(true)
@@ -139,11 +144,20 @@ export default function DMChatPanel({ friend, onClose }) {
           }
           return
         }
+
         if (data.type === 'message') {
           setMessages(prev => {
             if (prev.find(m => m.id === data.id)) return prev
             return [...prev, data]
           })
+
+          // If the message is from the friend (not self), fire the notification callback
+          if (data.sender_id !== user?.id) {
+            // Only notify if panel is minimized — if open and visible, user sees it directly
+            if (minimizedRef.current) {
+              onNewMessage?.(friend.username)
+            }
+          }
         }
       } catch {}
     }
@@ -156,6 +170,11 @@ export default function DMChatPanel({ friend, onClose }) {
       clearTimeout(typingTimer.current)
     }
   }, [roomId, token])
+
+  // Keep minimizedRef in sync
+  useEffect(() => {
+    minimizedRef.current = minimized
+  }, [minimized])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })

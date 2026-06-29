@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import DMChatPanel from '../components/chat/DMChatPanel'
+import XPToastContainer, { useXPToast } from '../components/XPToast'
 
 const TABS = ['Friends', 'Requests', 'Find People', 'Online', 'Blocked']
 const ACCENT = { primary: '#a855f7', secondary: '#7c3aed' }
@@ -18,6 +19,9 @@ const avatarColor = (name = '') => AVATAR_PALETTE[(name.charCodeAt(0) || 0) % AV
 export default function FriendsPage() {
   const { dark: isDark } = useTheme()
   const { user }         = useAuth()
+
+  // XP toast hook
+  const { toasts, removeToast, showXP, showLevelUp, showFriendAccepted, showFriendRequest, showNewMessage } = useXPToast()
 
   const [tab, setTab]                     = useState('Friends')
   const [friends, setFriends]             = useState([])
@@ -82,14 +86,41 @@ export default function FriendsPage() {
     } finally { setSending(s => ({ ...s, [userId]: false })) }
   }
 
-  const acceptRequest = async (id) => {
-    try { await axios.post(`/api/friends/accept/${id}`); toast.success('Request accepted! 🎮'); await loadFriends() }
-    catch { toast.error('Failed to accept') }
+  const acceptRequest = async (req) => {
+    try {
+      await axios.post(`/api/friends/accept/${req.id}`)
+      toast.success('Request accepted! 🎮')
+
+      // Award XP for making a friend
+      const xpRes = await axios.post('/api/xp/award', null, {
+        params: { action: 'made_friend', detail: req.requester.username }
+      })
+
+      // Show XP toast
+      showXP(xpRes.data.xp_earned, 'made_friend', req.requester.username)
+
+      // Show level up toast if leveled up
+      if (xpRes.data.leveled_up) {
+        setTimeout(() => showLevelUp(xpRes.data.level), 600)
+      }
+
+      // Show friend accepted toast
+      showFriendAccepted(req.requester.username)
+
+      await loadFriends()
+    } catch {
+      toast.error('Failed to accept')
+    }
   }
+
   const declineRequest = async (id) => {
-    try { await axios.delete(`/api/friends/decline/${id}`); setRequests(r => r.filter(x => x.id !== id)); toast.success('Declined') }
-    catch { toast.error('Failed to decline') }
+    try {
+      await axios.delete(`/api/friends/decline/${id}`)
+      setRequests(r => r.filter(x => x.id !== id))
+      toast.success('Declined')
+    } catch { toast.error('Failed to decline') }
   }
+
   const removeFriend = async (partnerId) => {
     try {
       await axios.delete(`/api/friends/remove/${partnerId}`)
@@ -97,6 +128,11 @@ export default function FriendsPage() {
       if (chatFriend?.id === partnerId) setChatFriend(null)
       toast.success('Friend removed')
     } catch { toast.error('Failed to remove') }
+  }
+
+  // Open DM and show new message toast (called from DMChatPanel via prop)
+  const handleIncomingMessage = (senderName) => {
+    showNewMessage(senderName)
   }
 
   // ── derived ───────────────────────────────────────────────
@@ -301,7 +337,6 @@ export default function FriendsPage() {
           marginRight: chatFriend ? 384 : 0,
           transition: 'margin-right 0.3s',
           minHeight: '100%',
-
         }}
       >
 
@@ -431,8 +466,8 @@ export default function FriendsPage() {
                 </div>
               : requests.map(req => (
                   <PersonRow key={req.id} person={req.requester} actions={<>
-                    {iconBtn(() => acceptRequest(req.id),  <Check size={16} />, '#10b981', 'rgba(16,185,129,0.14)')}
-                    {iconBtn(() => declineRequest(req.id), <X size={16} />,     txtSec,   isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6')}
+                    {iconBtn(() => acceptRequest(req),  <Check size={16} />, '#10b981', 'rgba(16,185,129,0.14)')}
+                    {iconBtn(() => declineRequest(req.id), <X size={16} />, txtSec, isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6')}
                   </>} />
                 ))
             }
@@ -548,7 +583,16 @@ export default function FriendsPage() {
 
       </div>
 
-      {chatFriend && <DMChatPanel friend={chatFriend} onClose={() => setChatFriend(null)} />}
+      {chatFriend && (
+        <DMChatPanel
+          friend={chatFriend}
+          onClose={() => setChatFriend(null)}
+          onNewMessage={handleIncomingMessage}
+        />
+      )}
+
+      {/* XP / notification toasts — bottom right */}
+      <XPToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   )
 }
