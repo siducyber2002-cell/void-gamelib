@@ -121,7 +121,9 @@ export default function DMChatPanel({ friend, onClose }) {
   useEffect(() => {
     loadHistory()
 
-    const ws = new WebSocket(`ws://${window.location.host}/api/dm/ws/dm/${roomId}?token=${token}`)
+    // Use wss:// on HTTPS (production), ws:// on HTTP (local dev)
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/dm/ws/dm/${roomId}?token=${token}`)
     wsRef.current = ws
 
     ws.onopen = () => setWsReady(true)

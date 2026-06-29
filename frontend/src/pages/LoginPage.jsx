@@ -923,6 +923,7 @@ export default function LoginPage() {
             <div className="glitch-sub">
               &gt; YOUR ULTIMATE GAME LIBRARY_<br />
               &gt; ALL GAMES. ONE PLACE. INFINITE WORLDS_
+              &gt; Developed and Designed by Sid and Subhra
             </div>
             <a href="/library" className="explore-btn">
               <BookOpen size={12} />
