@@ -46,6 +46,7 @@ class User(Base):
     received_requests = relationship("Friendship",      foreign_keys="Friendship.addressee_id", back_populates="addressee", cascade="all, delete")
     messages          = relationship("Message",         back_populates="author",  cascade="all, delete")
     reviews           = relationship("Review",          back_populates="user",    cascade="all, delete")
+    notifications     = relationship("Notification",    back_populates="user",    cascade="all, delete")
 
 
 # ─── Game ────────────────────────────────────────────────
@@ -164,19 +165,17 @@ class NewsArticle(Base):
 
     id           = Column(Integer, primary_key=True, index=True)
     title        = Column(String(300), nullable=False)
-    summary      = Column(Text, default="")        # maps to NewsAPI "description"
-    body         = Column(Text, default="")        # maps to NewsAPI "content"
+    summary      = Column(Text, default="")
+    body         = Column(Text, default="")
     category     = Column(String(50), default="Industry News", index=True)
-    cover_url    = Column(String(500), default="") # maps to NewsAPI "urlToImage"
+    cover_url    = Column(String(500), default="")
     source_url   = Column(String(500), default="", unique=True, index=True)
-    source_name  = Column(String(200), default="") # maps to NewsAPI "source.name"
-    author       = Column(String(200), default="") # maps to NewsAPI "author"
+    source_name  = Column(String(200), default="")
+    author       = Column(String(200), default="")
     published_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 # ─── News Cache Tracker ──────────────────────────────────
-# Tracks when each category+date combo was last fetched from NewsAPI.
-# One row per unique cache_key (e.g. "Industry News||2026-06-01||2026-06-22").
 class NewsCache(Base):
     __tablename__ = "news_cache"
 
@@ -213,3 +212,20 @@ class UserActivity(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", backref="activities")
+
+
+# ─── Notifications ───────────────────────────────────────
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    type       = Column(String(50), nullable=False)   # "xp" | "level_up" | "friend_request" | "friend_accepted" | "new_message"
+    message    = Column(String(500), nullable=False)
+    xp_earned  = Column(Integer, default=0)
+    action     = Column(String(100), default="")
+    detail     = Column(String(300), default="")
+    read       = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="notifications")

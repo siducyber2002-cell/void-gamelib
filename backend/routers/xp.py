@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from db.database import get_db
-from models.models import User, UserActivity
+from models.models import User, UserActivity, Notification
 from schemas.schemas import UserOut
 from utils.auth import get_current_user
 from datetime import datetime
@@ -18,17 +18,29 @@ XP_MAP = {
     "read_news":        5,
 }
 
+NOTIFICATION_LABELS = {
+    "added_game":      "Added a game to library",
+    "completed_game":  "Completed a game",
+    "made_friend":     "Made a new friend",
+    "watched_trailer": "Watched a trailer",
+    "read_news":       "Read a news article",
+}
+
 def xp_for_level(level: int) -> int:
     """XP required to reach the next level from current level."""
     return level * 100  # Level 1→2 = 100xp, 2→3 = 200xp, etc.
 
 def apply_xp(user: User, xp: int, db: Session):
     """Add XP to user and level up if threshold reached."""
+    old_level = user.level
     user.xp += xp
+    leveled_up = False
     while user.xp >= xp_for_level(user.level):
         user.xp -= xp_for_level(user.level)
         user.level += 1
+        leveled_up = True
     db.commit()
+    return leveled_up, old_level
 
 @router.post("/award")
 def award_xp(
@@ -52,13 +64,49 @@ def award_xp(
     db.add(activity)
 
     # Apply XP + level up
-    apply_xp(current_user, xp, db)
+    leveled_up, old_level = apply_xp(current_user, xp, db)
     db.refresh(current_user)
 
+    # Create XP notification
+    label = NOTIFICATION_LABELS.get(action, action.replace("_", " ").title())
+    notif_message = f"+{xp} XP — {label}"
+    if detail:
+        notif_message += f": {detail}"
+
+    notification = Notification(
+        user_id=current_user.id,
+        type="xp",
+        message=notif_message,
+        xp_earned=xp,
+        action=action,
+        detail=detail,
+        read=False,
+        created_at=datetime.utcnow(),
+    )
+    db.add(notification)
+
+    # Level-up notification
+    if leveled_up:
+        level_notif = Notification(
+            user_id=current_user.id,
+            type="level_up",
+            message=f"🎉 Level up! You reached Level {current_user.level}!",
+            xp_earned=0,
+            action="level_up",
+            detail=str(current_user.level),
+            read=False,
+            created_at=datetime.utcnow(),
+        )
+        db.add(level_notif)
+
+    db.commit()
+
     return {
-        "xp_earned": xp,
-        "total_xp":  current_user.xp,
-        "level":     current_user.level,
+        "xp_earned":   xp,
+        "total_xp":    current_user.xp,
+        "level":       current_user.level,
+        "leveled_up":  leveled_up,
+        "old_level":   old_level,
     }
 
 
@@ -93,8 +141,94 @@ def get_xp_stats(
     current_user: User = Depends(get_current_user),
 ):
     return {
-        "level":          current_user.level,
-        "xp":             current_user.xp,
-        "xp_to_next":     xp_for_level(current_user.level),
-        "xp_percent":     round((current_user.xp / xp_for_level(current_user.level)) * 100),
+        "level":      current_user.level,
+        "xp":         current_user.xp,
+        "xp_to_next": xp_for_level(current_user.level),
+        "xp_percent": round((current_user.xp / xp_for_level(current_user.level)) * 100),
     }
+
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+
+@router.get("/notifications")
+def get_notifications(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    notifs = (
+        db.query(Notification)
+        .filter(Notification.user_id == current_user.id)
+        .order_by(desc(Notification.created_at))
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id":         n.id,
+            "type":       n.type,
+            "message":    n.message,
+            "xp_earned":  n.xp_earned,
+            "action":     n.action,
+            "detail":     n.detail,
+            "read":       n.read,
+            "created_at": n.created_at,
+        }
+        for n in notifs
+    ]
+
+
+@router.get("/notifications/unread-count")
+def get_unread_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    count = (
+        db.query(Notification)
+        .filter(Notification.user_id == current_user.id, Notification.read == False)
+        .count()
+    )
+    return {"unread": count}
+
+
+@router.post("/notifications/mark-read")
+def mark_notifications_read(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    (
+        db.query(Notification)
+        .filter(Notification.user_id == current_user.id, Notification.read == False)
+        .update({"read": True})
+    )
+    db.commit()
+    return {"marked_read": True}
+
+
+@router.post("/notifications/create")
+def create_notification(
+    type: str,
+    message: str,
+    action: str = "",
+    detail: str = "",
+    xp_earned: int = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    General-purpose notification creator — used by friends router
+    to push friend-request and message notifications.
+    """
+    notif = Notification(
+        user_id=current_user.id,
+        type=type,
+        message=message,
+        xp_earned=xp_earned,
+        action=action,
+        detail=detail,
+        read=False,
+        created_at=datetime.utcnow(),
+    )
+    db.add(notif)
+    db.commit()
+    return {"created": True}
