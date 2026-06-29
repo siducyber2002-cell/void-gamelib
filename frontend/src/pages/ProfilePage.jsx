@@ -19,9 +19,14 @@ const ACTION_META = {
 
 function timeAgo(dateStr) {
   if (!dateStr) return ''
-  const normalized = dateStr.endsWith('Z') ? dateStr : dateStr + 'Z'
+  // Normalize: handle both "Z", "+00:00", and naive UTC strings
+  let normalized = dateStr
+  if (!normalized.endsWith('Z') && !normalized.match(/[+-]\d{2}:\d{2}$/)) {
+    normalized = normalized + 'Z'   // treat as UTC if no tz info
+  }
   const diffMs = Date.now() - new Date(normalized).getTime()
-  const mins   = Math.floor(diffMs / 60000)
+  if (isNaN(diffMs)) return ''      // guard against bad dates
+  const mins = Math.floor(diffMs / 60000)
   if (mins < 1)   return 'just now'
   if (mins < 60)  return `${mins}m ago`
   const hours = Math.floor(mins / 60)

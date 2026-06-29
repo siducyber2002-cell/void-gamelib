@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import axios from 'axios'
 import {
   ExternalLink, Clock, Newspaper, AlertCircle, RefreshCw,
@@ -25,6 +25,18 @@ const PRESETS = [
   { label: 'Custom',     value: 'custom' },
 ]
 
+// Award read_news XP once per article URL per session
+const awardedUrls = new Set()
+async function awardNewsXp(url, title) {
+  if (awardedUrls.has(url)) return
+  awardedUrls.add(url)
+  try {
+    await axios.post('/api/xp/award', null, { params: { action: 'read_news', detail: title } })
+  } catch (e) {
+    console.warn('News XP award failed:', e)
+  }
+}
+
 function getPresetDates(preset) {
   const now = new Date()
   const toISO = d => d.toISOString()
@@ -44,7 +56,13 @@ function getPresetDates(preset) {
 }
 
 function timeAgo(dateStr) {
-  const diffMs = Date.now() - new Date(dateStr).getTime()
+  if (!dateStr) return ''
+  let normalized = dateStr
+  if (!normalized.endsWith('Z') && !normalized.match(/[+-]\d{2}:\d{2}$/)) {
+    normalized = normalized + 'Z'
+  }
+  const diffMs = Date.now() - new Date(normalized).getTime()
+  if (isNaN(diffMs)) return ''
   const mins   = Math.floor(diffMs / 60000)
   if (mins < 1)   return 'just now'
   if (mins < 60)  return `${mins}m ago`
@@ -293,7 +311,8 @@ export default function NewsPage() {
                 className="rounded-2xl overflow-hidden group transition-all duration-200 block"
                 style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}
                 onMouseEnter={e => e.currentTarget.style.boxShadow = hoverShadow}
-                onMouseLeave={e => e.currentTarget.style.boxShadow = cardShadow}>
+                onMouseLeave={e => e.currentTarget.style.boxShadow = cardShadow}
+                onClick={() => awardNewsXp(featured.url, featured.title)}>
                 <div className="grid md:grid-cols-2">
                   <div className="relative h-56 md:h-full overflow-hidden" style={{ background: accent + '18' }}>
                     {featured.urlToImage
@@ -330,7 +349,8 @@ export default function NewsPage() {
                     className="rounded-2xl overflow-hidden group transition-all duration-200 flex flex-col"
                     style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}
                     onMouseEnter={e => e.currentTarget.style.boxShadow = hoverShadow}
-                    onMouseLeave={e => e.currentTarget.style.boxShadow = cardShadow}>
+                    onMouseLeave={e => e.currentTarget.style.boxShadow = cardShadow}
+                    onClick={() => awardNewsXp(news.url, news.title)}>
                     <div className="relative h-36 overflow-hidden" style={{ background: accent + '18' }}>
                       {news.urlToImage
                         ? <img src={news.urlToImage} alt={news.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />

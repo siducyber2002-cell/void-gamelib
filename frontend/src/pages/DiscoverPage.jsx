@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import axios from 'axios'
 import {
   Search, SlidersHorizontal, Star, X, Play, Loader2,
   ChevronLeft, ChevronRight, Compass, Plus,
@@ -33,7 +34,7 @@ const ACCENT_COLORS = [
 ]
 
 // ── Trailer Modal ──────────────────────────────────────────────────────────────
-function TrailerModal({ gameTitle, onClose }) {
+function TrailerModal({ gameTitle, onClose, onXpAwarded }) {
   const [videoId, setVideoId] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -45,8 +46,10 @@ function TrailerModal({ gameTitle, onClose }) {
       .then(r => r.json())
       .then(data => {
         if (cancelled) return
-        setVideoId(data.items?.[0]?.id?.videoId || null)
+        const id = data.items?.[0]?.id?.videoId || null
+        setVideoId(id)
         setLoading(false)
+        if (id) onXpAwarded(gameTitle)   // award XP only when a trailer is actually found
       })
       .catch(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -221,6 +224,18 @@ export default function DiscoverPage() {
   const PAGE_SIZE  = 20
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
+  // Award watched_trailer XP (once per game per session)
+  const awardedTrailers = useRef(new Set())
+  const awardTrailerXp = useCallback(async (gameTitle) => {
+    if (awardedTrailers.current.has(gameTitle)) return
+    awardedTrailers.current.add(gameTitle)
+    try {
+      await axios.post('/api/xp/award', null, { params: { action: 'watched_trailer', detail: gameTitle } })
+    } catch (e) {
+      console.warn('Trailer XP award failed:', e)
+    }
+  }, [])
+
   // Search debounce
   const searchTimer = useRef(null)
   const handleSearchInput = val => {
@@ -330,7 +345,7 @@ export default function DiscoverPage() {
         .compass-pulse-delay { animation: compassPulse 2.6s ease-out 1.3s infinite; }
       `}</style>
 
-      {trailerGame && <TrailerModal gameTitle={trailerGame} onClose={() => setTrailerGame(null)} />}
+      {trailerGame && <TrailerModal gameTitle={trailerGame} onClose={() => setTrailerGame(null)} onXpAwarded={awardTrailerXp} />}
 
       <div className="relative px-6 py-7 flex flex-col gap-6" style={{ zIndex: 1 }}>
 
