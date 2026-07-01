@@ -952,7 +952,8 @@ export default function LoginPage() {
                 </div>
                 <input
                   className="field-input"
-                  type="email"
+                  type="text"
+                  autoComplete="username"
                   placeholder="Email or Username"
                   value={form.email}
                   onChange={e => setForm({ ...form, email: e.target.value })}

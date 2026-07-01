@@ -67,8 +67,14 @@ export function AuthProvider({ children }) {
     return res.data
   }
 
+  const deleteAccount = async (password) => {
+    const res = await axios.delete('/api/auth/me', { data: { password } })
+    logout()
+    return res.data
+  }
+
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateProfile, changePassword }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateProfile, changePassword, deleteAccount }}>
       {children}
     </AuthContext.Provider>
   )

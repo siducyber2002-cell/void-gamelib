@@ -47,6 +47,9 @@ class User(Base):
     messages          = relationship("Message",         back_populates="author",  cascade="all, delete")
     reviews           = relationship("Review",          back_populates="user",    cascade="all, delete")
     notifications     = relationship("Notification",    back_populates="user",    cascade="all, delete")
+    activities         = relationship("UserActivity",    back_populates="user",    cascade="all, delete")
+    sent_messages      = relationship("DirectMessage",   foreign_keys="DirectMessage.sender_id",   back_populates="sender",   cascade="all, delete")
+    received_messages  = relationship("DirectMessage",   foreign_keys="DirectMessage.receiver_id", back_populates="receiver", cascade="all, delete")
 
 
 # ─── Game ────────────────────────────────────────────────
@@ -196,8 +199,8 @@ class DirectMessage(Base):
     is_read     = Column(Boolean, default=False)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
-    sender   = relationship("User", foreign_keys=[sender_id])
-    receiver = relationship("User", foreign_keys=[receiver_id])
+    sender   = relationship("User", foreign_keys=[sender_id], back_populates="sent_messages")
+    receiver = relationship("User", foreign_keys=[receiver_id], back_populates="received_messages")
 
 
 # ─── User Activity (XP/Gamification) ────────────────────
@@ -211,7 +214,7 @@ class UserActivity(Base):
     xp_earned  = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
-    user = relationship("User", backref="activities")
+    user = relationship("User", back_populates="activities")
 
 
 # ─── Notifications ───────────────────────────────────────
