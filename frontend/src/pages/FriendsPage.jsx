@@ -8,7 +8,8 @@ import { useAuth } from '../context/AuthContext'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import DMChatPanel from '../components/chat/DMChatPanel'
-import XPToastContainer, { useXPToast } from '../components/XPToast'
+import { useXPToast } from '../components/XPToast'
+import { awardXP } from '../utils/xpService'
 
 const TABS = ['Friends', 'Requests', 'Find People', 'Online', 'Blocked']
 const ACCENT = { primary: '#a855f7', secondary: '#7c3aed' }
@@ -21,7 +22,7 @@ export default function FriendsPage() {
   const { user }         = useAuth()
 
   // XP toast hook
-  const { toasts, removeToast, showXP, showLevelUp, showFriendAccepted, showFriendRequest, showNewMessage } = useXPToast()
+  const { showFriendAccepted, showFriendRequest, showNewMessage } = useXPToast()
 
   const [tab, setTab]                     = useState('Friends')
   const [friends, setFriends]             = useState([])
@@ -91,18 +92,9 @@ export default function FriendsPage() {
       await axios.post(`/api/friends/accept/${req.id}`)
       toast.success('Request accepted! 🎮')
 
-      // Award XP for making a friend
-      const xpRes = await axios.post('/api/xp/award', null, {
-        params: { action: 'made_friend', detail: req.requester.username }
-      })
-
-      // Show XP toast
-      showXP(xpRes.data.xp_earned, 'made_friend', req.requester.username)
-
-      // Show level up toast if leveled up
-      if (xpRes.data.leveled_up) {
-        setTimeout(() => showLevelUp(xpRes.data.level), 600)
-      }
+      // Award XP for making a friend — the shared xpService shows the
+      // matching XP / level-up toast(s) globally on its own.
+      awardXP('made_friend', req.requester.username)
 
       // Show friend accepted toast
       showFriendAccepted(req.requester.username)
@@ -590,9 +582,6 @@ export default function FriendsPage() {
           onNewMessage={handleIncomingMessage}
         />
       )}
-
-      {/* XP / notification toasts — bottom right */}
-      <XPToastContainer toasts={toasts} onRemove={removeToast} />
     </>
   )
 }

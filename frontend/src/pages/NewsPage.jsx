@@ -5,6 +5,7 @@ import {
   Wrench, FileText, Trophy, Rocket, ChevronLeft, ChevronRight, Calendar,
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
+import { awardXP } from '../utils/xpService'
 
 const REFRESH_INTERVAL = 10 * 60 * 1000
 const PAGE_SIZE        = 12
@@ -27,14 +28,10 @@ const PRESETS = [
 
 // Award read_news XP once per article URL per session
 const awardedUrls = new Set()
-async function awardNewsXp(url, title) {
+function awardNewsXp(url, title) {
   if (awardedUrls.has(url)) return
   awardedUrls.add(url)
-  try {
-    await axios.post('/api/xp/award', null, { params: { action: 'read_news', detail: title } })
-  } catch (e) {
-    console.warn('News XP award failed:', e)
-  }
+  awardXP('read_news', title)
 }
 
 function getPresetDates(preset) {

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from db.database import get_db
@@ -8,6 +9,22 @@ from utils.auth import get_current_user
 from datetime import datetime
 
 router = APIRouter(prefix="/api/xp", tags=["XP"])
+
+
+# ── Request bodies ─────────────────────────────────────────────────────────
+# These let the frontend send normal JSON (axios.post(url, { action, detail }))
+# instead of query-string params.
+class AwardXPRequest(BaseModel):
+    action: str
+    detail: str = ""
+
+
+class CreateNotificationRequest(BaseModel):
+    type: str
+    message: str
+    action: str = ""
+    detail: str = ""
+    xp_earned: int = 0
 
 # XP values per action
 XP_MAP = {
@@ -44,11 +61,12 @@ def apply_xp(user: User, xp: int, db: Session):
 
 @router.post("/award")
 def award_xp(
-    action: str,
-    detail: str = "",
+    payload: AwardXPRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    action = payload.action
+    detail = payload.detail
     xp = XP_MAP.get(action, 0)
     if xp == 0:
         return {"message": "Unknown action", "xp_earned": 0}
@@ -207,11 +225,7 @@ def mark_notifications_read(
 
 @router.post("/notifications/create")
 def create_notification(
-    type: str,
-    message: str,
-    action: str = "",
-    detail: str = "",
-    xp_earned: int = 0,
+    payload: CreateNotificationRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -221,11 +235,11 @@ def create_notification(
     """
     notif = Notification(
         user_id=current_user.id,
-        type=type,
-        message=message,
-        xp_earned=xp_earned,
-        action=action,
-        detail=detail,
+        type=payload.type,
+        message=payload.message,
+        xp_earned=payload.xp_earned,
+        action=payload.action,
+        detail=payload.detail,
         read=False,
         created_at=datetime.utcnow(),
     )

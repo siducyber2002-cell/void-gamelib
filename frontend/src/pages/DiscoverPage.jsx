@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import axios from 'axios'
 import {
   Search, SlidersHorizontal, Star, X, Play, Loader2,
   ChevronLeft, ChevronRight, Compass, Plus,
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
+import { awardXP } from '../utils/xpService'
 
 const RAWG_KEY = 'cf38811b97cf43bbb8d88c606ed4e73c'
 const YT_KEY   = 'AIzaSyAH92kSbIuWj-if5suELQQCkoJXESmIrVk'
@@ -226,14 +226,10 @@ export default function DiscoverPage() {
 
   // Award watched_trailer XP (once per game per session)
   const awardedTrailers = useRef(new Set())
-  const awardTrailerXp = useCallback(async (gameTitle) => {
+  const awardTrailerXp = useCallback((gameTitle) => {
     if (awardedTrailers.current.has(gameTitle)) return
     awardedTrailers.current.add(gameTitle)
-    try {
-      await axios.post('/api/xp/award', null, { params: { action: 'watched_trailer', detail: gameTitle } })
-    } catch (e) {
-      console.warn('Trailer XP award failed:', e)
-    }
+    awardXP('watched_trailer', gameTitle)
   }, [])
 
   // Search debounce

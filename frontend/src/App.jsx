@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { LibraryProvider } from './context/LibraryContext'
+import { XPToastProvider } from './components/XPToast'
 
 import Layout from './components/layout/Layout'
 import LoginPage from './pages/LoginPage'
@@ -144,29 +145,31 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <LibraryProvider>
-          <BrowserRouter>
-            <Toaster position="top-right" toastOptions={{
-              style: { fontFamily: 'DM Sans, sans-serif', borderRadius: '12px', fontSize: '14px' }
-            }} />
-            <Routes>
-              <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-              <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-              <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/discover" element={<DiscoverPage />} />
-                <Route path="/library" element={<LibraryPage />} />
-                <Route path="/trending" element={<TrendingPage />} />
-                <Route path="/news" element={<NewsPage />} />
-                <Route path="/community" element={<CommunityPage />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/achievements" element={<AchievementsPage />} />
-                <Route path="/friends" element={<FriendsPage />} />
-              </Route>
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </BrowserRouter>
+          <XPToastProvider>
+            <BrowserRouter>
+              <Toaster position="top-right" toastOptions={{
+                style: { fontFamily: 'DM Sans, sans-serif', borderRadius: '12px', fontSize: '14px' }
+              }} />
+              <Routes>
+                <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+                <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+                <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/discover" element={<DiscoverPage />} />
+                  <Route path="/library" element={<LibraryPage />} />
+                  <Route path="/trending" element={<TrendingPage />} />
+                  <Route path="/news" element={<NewsPage />} />
+                  <Route path="/community" element={<CommunityPage />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/profile" element={<ProfilePage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                  <Route path="/achievements" element={<AchievementsPage />} />
+                  <Route path="/friends" element={<FriendsPage />} />
+                </Route>
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </BrowserRouter>
+          </XPToastProvider>
         </LibraryProvider>
       </AuthProvider>
     </ThemeProvider>

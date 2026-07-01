@@ -1,5 +1,18 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { Zap, Users, MessageCircle, UserPlus } from 'lucide-react'
+
+// ── Event bus ────────────────────────────────────────────────────────────
+// Lets non-component code (e.g. xpService.js) trigger toasts without hooks.
+const listeners = new Set()
+export const xpEventBus = {
+  emit(payload) {
+    listeners.forEach(fn => fn(payload))
+  },
+  subscribe(fn) {
+    listeners.add(fn)
+    return () => listeners.delete(fn)
+  },
+}
 
 // Toast types config
 const TOAST_META = {
@@ -74,6 +87,7 @@ function ToastItem({ toast, onRemove }) {
         willChange: 'transform, opacity',
         position: 'relative',
         overflow: 'hidden',
+        pointerEvents: 'auto',
       }}
     >
       {/* Shimmer sweep */}
@@ -140,8 +154,8 @@ function ToastItem({ toast, onRemove }) {
   )
 }
 
-// The global toast container — place this once in App.jsx or Layout.jsx
-export default function XPToastContainer({ toasts, onRemove }) {
+// Internal presentational container — rendered once by the Provider, never import directly
+function XPToastContainer({ toasts, onRemove }) {
   return (
     <>
       <style>{`
@@ -172,11 +186,14 @@ export default function XPToastContainer({ toasts, onRemove }) {
   )
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-// Usage: const { showXP, showFriendToast, showMessageToast } = useXPToast()
+// ── Global context ──────────────────────────────────────────────────────────
+// This makes toasts work no matter which page/component triggers them.
+// Mount <XPToastProvider> ONCE, at the root of your app (e.g. App.jsx or Layout.jsx),
+// wrapping everything else. Then any page can just call useXPToast().
 let _toastId = 0
+const XPToastCtx = createContext(null)
 
-export function useXPToast() {
+export function XPToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
 
   const addToast = (toast) => {
@@ -241,7 +258,40 @@ export function useXPToast() {
     })
   }
 
-  return {
+  // Convenience: call the backend /api/xp/award endpoint AND show the right
+  // toast(s) from the response, in one go. Pages will mostly just call this.
+  const awardXP = async (action, detail = '') => {
+    try {
+      const axios = (await import('axios')).default
+      const res = await axios.post('/api/xp/award', { action, detail })
+      const data = res.data
+      if (data.xp_earned > 0) {
+        showXP(data.xp_earned, action, detail)
+      }
+      if (data.leveled_up) {
+        // Slight stagger so the two toasts don't overlap visually
+        setTimeout(() => showLevelUp(data.level), 450)
+      }
+      return data
+    } catch (e) {
+      console.error('XP award failed:', e)
+      return null
+    }
+  }
+
+  // Listen for XP events fired from outside React (e.g. xpService.js)
+  useEffect(() => {
+    const unsubscribe = xpEventBus.subscribe((payload) => {
+      if (payload.kind === 'xp') {
+        showXP(payload.xpEarned, payload.action, payload.detail)
+      } else if (payload.kind === 'level_up') {
+        showLevelUp(payload.level)
+      }
+    })
+    return unsubscribe
+  }, [])
+
+  const value = {
     toasts,
     removeToast,
     showXP,
@@ -249,5 +299,21 @@ export function useXPToast() {
     showFriendRequest,
     showFriendAccepted,
     showNewMessage,
+    awardXP,
   }
+
+  return (
+    <XPToastCtx.Provider value={value}>
+      {children}
+      <XPToastContainer toasts={toasts} onRemove={removeToast} />
+    </XPToastCtx.Provider>
+  )
+}
+
+export function useXPToast() {
+  const ctx = useContext(XPToastCtx)
+  if (!ctx) {
+    throw new Error('useXPToast() must be used inside <XPToastProvider>. Wrap your app root with it once (e.g. in App.jsx).')
+  }
+  return ctx
 }
