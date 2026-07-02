@@ -980,7 +980,7 @@ export default function LoginPage() {
             </div>
             <div className="glitch-sub">
               &gt; YOUR ULTIMATE GAME LIBRARY_<br />
-              &gt; ALL GAMES. ONE PLACE. INFINITE WORLDS_
+              &gt; ALL GAMES. ONE PLACE. INFINITE WORLDS_<br />
               &gt; Developed and Designed by Sid and Subhra
             </div>
             <a href="/library" className="explore-btn">
