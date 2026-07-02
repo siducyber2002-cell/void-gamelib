@@ -288,6 +288,19 @@ function NotificationBell({ dark }) {
   useEffect(() => { fetchNotifs() }, [])
   useEffect(() => { const id = setInterval(fetchNotifs, 12000); return () => clearInterval(id) }, [fetchNotifs])
 
+  // ── Presence heartbeat ──────────────────────────────────────
+  // NotificationBell is mounted globally on every page while logged in, so
+  // this is the natural place to keep the backend's User.last_seen fresh.
+  // Friends only show as "Online" while they have a live heartbeat within
+  // the last ~45s (see models.py) — close the tab and they fall back to
+  // offline on their own, no explicit logout needed.
+  useEffect(() => {
+    const ping = () => fetch('/api/auth/heartbeat', { method: 'POST', ...authHeaders }).catch(() => {})
+    ping()
+    const id = setInterval(ping, 20000)
+    return () => clearInterval(id)
+  }, [])
+
   // The moment XP is earned anywhere in the app (Home, Discover, News,
   // Friends...) — same event the toast listens to — refresh the bell right
   // away instead of waiting for the next poll tick.

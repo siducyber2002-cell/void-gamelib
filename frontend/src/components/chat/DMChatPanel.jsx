@@ -381,13 +381,20 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
                 </div>
               )
             }
-            <Circle size={10} className="absolute -bottom-0.5 -right-0.5 fill-emerald-400 text-emerald-400" />
+            <Circle
+              size={10}
+              className="absolute -bottom-0.5 -right-0.5"
+              style={{
+                fill: friend.online ? '#34d399' : '#9ca3af',
+                color: friend.online ? '#34d399' : '#9ca3af',
+              }}
+            />
           </div>
 
           <div className="flex-1 min-w-0">
             <p className={`font-display font-bold text-sm truncate ${textPrimary}`}>{friend.username}</p>
-            <p className="text-xs text-emerald-500 font-semibold">
-              {wsReady ? 'Online' : 'Connecting...'}
+            <p className="text-xs font-semibold" style={{ color: !wsReady ? '#94a3b8' : (friend.online ? '#10b981' : '#9ca3af') }}>
+              {!wsReady ? 'Connecting...' : (friend.online ? 'Online' : 'Offline')}
             </p>
           </div>
 

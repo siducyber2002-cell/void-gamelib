@@ -97,6 +97,23 @@ export default function FriendsPage() {
   }, [])
   useEffect(() => { loadFriends() }, [loadFriends])
 
+  // Presence (online/offline) changes over time even without any action on
+  // this page — refetch periodically so it doesn't go stale while the tab
+  // is sitting open. 20s matches the heartbeat interval in Topbar.jsx.
+  useEffect(() => {
+    const id = setInterval(loadFriends, 20000)
+    return () => clearInterval(id)
+  }, [loadFriends])
+
+  // If a chat panel is open, keep its friend data (avatar, online status,
+  // etc.) in sync with the periodic refresh above — otherwise it's stuck
+  // showing whatever was true the moment the panel was opened.
+  useEffect(() => {
+    if (!chatFriend) return
+    const updated = friends.map(f => getPartner(f)).find(f => f.id === chatFriend.id)
+    if (updated && updated.online !== chatFriend.online) setChatFriend(updated)
+  }, [friends])
+
   // ── deep-link: notification bell → /friends?tab=Friends&dm=<friendId> ──
   // Auto-open that friend's DM panel once friends have loaded. Guarded by a
   // ref so it only fires once per page load — if the user closes the panel
@@ -200,7 +217,7 @@ export default function FriendsPage() {
   const FriendCard = ({ friend }) => {
     const color  = avatarColor(friend.username)
     const active = chatFriend?.id === friend.id
-    const online = true // TODO: real presence
+    const online = friend.online
 
     return (
       <div
@@ -370,9 +387,11 @@ export default function FriendsPage() {
     </div>
   )
 
+  const onlineCount = friendPartners.filter(f => f.online).length
+
   const stats = [
     { label: 'Friends',  value: friendPartners.length, color: ACCENT.primary },
-    { label: 'Online',   value: friendPartners.length, color: '#22c55e' },
+    { label: 'Online',   value: onlineCount,            color: '#22c55e' },
     { label: 'Requests', value: requests.length,       color: '#f59e0b' },
     { label: 'Blocked',  value: 0,                     color: txtMut    },
   ]
@@ -412,7 +431,7 @@ export default function FriendsPage() {
             </h1>
             <p style={{ fontSize: 13, color: txtSec }}>
               {friendPartners.length} friends &nbsp;·&nbsp;
-              <span style={{ color: '#22c55e', fontWeight: 600 }}>{friendPartners.length} online</span>
+              <span style={{ color: '#22c55e', fontWeight: 600 }}>{onlineCount} online</span>
             </p>
           </div>
           <button
@@ -621,14 +640,14 @@ export default function FriendsPage() {
 
         {/* ── ONLINE TAB ───────────────────────────────────── */}
         {tab === 'Online' && (
-          friendPartners.length === 0
+          friendPartners.filter(f => f.online).length === 0
             ? <div style={{ textAlign: 'center', padding: '72px 0' }}>
                 <Wifi size={44} style={{ margin: '0 auto 14px', color: txtMut, display: 'block' }} />
                 <p style={{ fontWeight: 800, color: txtPri, marginBottom: 8 }}>Nobody online right now</p>
                 <p style={{ color: txtSec, fontSize: 13 }}>Your friends will appear here when active</p>
               </div>
             : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
-                {friendPartners.map(f => (
+                {friendPartners.filter(f => f.online).map(f => (
                   <div
                     key={f.id}
                     onClick={() => setChatFriend(f)}
