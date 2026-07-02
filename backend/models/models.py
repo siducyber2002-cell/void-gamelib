@@ -1,11 +1,19 @@
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean,
-    DateTime, Date, ForeignKey, Enum, UniqueConstraint
+    DateTime, ForeignKey, Enum
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from datetime import datetime, timezone
 import enum
 from db.database import Base
+
+# A user counts as "online" if we've heard from them (via the heartbeat
+# endpoint, pinged every ~20s by the frontend while the app is open) within
+# this many seconds. Self-correcting: close the tab / lose connection and
+# they naturally fall back to "offline" without needing an explicit
+# logout signal.
+ONLINE_THRESHOLD_SECONDS = 45
 
 
 class GameStatus(str, enum.Enum):
@@ -37,13 +45,22 @@ class User(Base):
     level           = Column(Integer, default=1)
     xp              = Column(Integer, default=0)
     is_active       = Column(Boolean, default=True)
+    last_seen       = Column(DateTime(timezone=True), nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
 
-    # ── Login streak ──
-    last_login_date = Column(Date, nullable=True)       # date (no time) of most recent counted login
-    current_streak  = Column(Integer, default=0, nullable=False)
-    longest_streak  = Column(Integer, default=0, nullable=False)
+    @property
+    def online(self) -> bool:
+        """True if last_seen was updated within ONLINE_THRESHOLD_SECONDS.
+        Not a DB column — computed live so it never goes stale in a way that
+        needs cleanup. Pydantic's `from_attributes` mode reads this like any
+        other attribute, so it flows straight into UserPublic responses."""
+        if not self.last_seen:
+            return False
+        last = self.last_seen
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - last).total_seconds() < ONLINE_THRESHOLD_SECONDS
 
     library           = relationship("UserGame",        back_populates="user", cascade="all, delete")
     achievements      = relationship("UserAchievement", back_populates="user", cascade="all, delete")
@@ -55,19 +72,6 @@ class User(Base):
     activities         = relationship("UserActivity",    back_populates="user",    cascade="all, delete")
     sent_messages      = relationship("DirectMessage",   foreign_keys="DirectMessage.sender_id",   back_populates="sender",   cascade="all, delete")
     received_messages  = relationship("DirectMessage",   foreign_keys="DirectMessage.receiver_id", back_populates="receiver", cascade="all, delete")
-
-
-# ─── Streak History (for the login-streak calendar) ──────
-class StreakLog(Base):
-    __tablename__ = "streak_logs"
-
-    id      = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    date    = Column(Date, nullable=False, index=True)
-
-    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_streak_log_user_date"),)
-
-    user = relationship("User")
 
 
 # ─── Game ────────────────────────────────────────────────
