@@ -261,7 +261,10 @@ function NotificationBell({ dark }) {
   const textMut = dark ? '#6b6890' : '#9b93b8'
   const accent  = '#a855f7'
 
-  const authHeaders = { headers: { Authorization: `Bearer ${localStorage.getItem('gl_token')}` } }
+  const authHeaders = {
+    headers: { Authorization: `Bearer ${localStorage.getItem('gl_token')}` },
+    cache: 'no-store', // never let the browser serve a stale 304-cached body for these
+  }
 
   const fetchNotifs = useCallback(async () => {
     try {
