@@ -123,15 +123,41 @@ def get_unread_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    count = (
+    unread_msgs = (
         db.query(DirectMessage)
         .filter(
             DirectMessage.receiver_id == current_user.id,
             DirectMessage.is_read == False,
         )
-        .count()
+        .order_by(DirectMessage.created_at.desc())
+        .all()
     )
-    return {"count": count}
+
+    # Group unread messages by sender so the notification bell can tell the
+    # user *who* messaged them and deep-link straight to that DM, instead of
+    # just showing a bare total.
+    senders: Dict[int, dict] = {}
+    for msg in unread_msgs:
+        s = senders.setdefault(msg.sender_id, {
+            "id": msg.sender_id,
+            "username": None,
+            "avatar_url": None,
+            "count": 0,
+            "last_message": msg.content,
+            "last_message_at": msg.created_at.isoformat(),
+        })
+        s["count"] += 1
+
+    if senders:
+        users = db.query(User).filter(User.id.in_(senders.keys())).all()
+        for u in users:
+            senders[u.id]["username"] = u.username
+            senders[u.id]["avatar_url"] = getattr(u, "avatar_url", None)
+
+    return {
+        "count": len(unread_msgs),
+        "senders": sorted(senders.values(), key=lambda s: s["last_message_at"], reverse=True),
+    }
 
 
 # ─── REST: Mark messages as read ─────────────────────────
@@ -174,8 +200,15 @@ def get_history(
 
 
 # ─── REST: Send message (fallback if WS not available) ───
+# NOTE: this used to just write to the DB and return, without ever telling
+# the other user's open WebSocket connection about the new message. That's
+# why a message sent through this fallback (e.g. while the sender's socket
+# was still mid-(re)connect) would silently sit in the DB and only show up
+# once the receiver closed and reopened the DM panel — because reopening is
+# what triggers loadHistory(). Now we broadcast it exactly like the WS
+# handler does, so it also appears live for anyone with the room open.
 @router.post("/send", response_model=DMMessageOut, status_code=201)
-def send_message(
+async def send_message(
     payload: DMSend,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -194,4 +227,20 @@ def send_message(
     db.add(msg)
     db.commit()
     db.refresh(msg)
+
+    ws_payload = {
+        "type":       "message",
+        "id":         msg.id,
+        "sender_id":  msg.sender_id,
+        "receiver_id": msg.receiver_id,
+        "content":    msg.content,
+        "created_at": msg.created_at.isoformat(),
+        "sender_username": current_user.username,
+    }
+    for uid, ws in list(active_rooms.get(room_id, {}).items()):
+        try:
+            await ws.send_text(json.dumps(ws_payload))
+        except Exception:
+            active_rooms[room_id].pop(uid, None)
+
     return msg
