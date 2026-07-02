@@ -14,7 +14,7 @@ export default function LoginPage() {
   const [darkMode, setDarkMode] = useState(true)
   const [glitchText, setGlitchText] = useState('Enter The Void')
   const [videoLoaded, setVideoLoaded] = useState(false)
-  const YT_VIDEO_ID = 'pwi2LjDq9q4';
+  const YT_VIDEO_ID = 'f3st1DfrvIc';
 
   const taglines = [
     'Enter The Void',
