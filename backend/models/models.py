@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean,
-    DateTime, ForeignKey, Enum
+    DateTime, Date, ForeignKey, Enum, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -40,6 +40,11 @@ class User(Base):
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
 
+    # ── Login streak ──
+    last_login_date = Column(Date, nullable=True)       # date (no time) of most recent counted login
+    current_streak  = Column(Integer, default=0, nullable=False)
+    longest_streak  = Column(Integer, default=0, nullable=False)
+
     library           = relationship("UserGame",        back_populates="user", cascade="all, delete")
     achievements      = relationship("UserAchievement", back_populates="user", cascade="all, delete")
     sent_requests     = relationship("Friendship",      foreign_keys="Friendship.requester_id", back_populates="requester", cascade="all, delete")
@@ -50,6 +55,19 @@ class User(Base):
     activities         = relationship("UserActivity",    back_populates="user",    cascade="all, delete")
     sent_messages      = relationship("DirectMessage",   foreign_keys="DirectMessage.sender_id",   back_populates="sender",   cascade="all, delete")
     received_messages  = relationship("DirectMessage",   foreign_keys="DirectMessage.receiver_id", back_populates="receiver", cascade="all, delete")
+
+
+# ─── Streak History (for the login-streak calendar) ──────
+class StreakLog(Base):
+    __tablename__ = "streak_logs"
+
+    id      = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    date    = Column(Date, nullable=False, index=True)
+
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_streak_log_user_date"),)
+
+    user = relationship("User")
 
 
 # ─── Game ────────────────────────────────────────────────

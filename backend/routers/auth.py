@@ -5,9 +5,10 @@ from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import List
 from db.database import get_db
-from models.models import User
-from schemas.schemas import UserRegister, UserOut, UserUpdate, TokenResponse, ChangePassword, UserPublic
+from models.models import User, StreakLog
+from schemas.schemas import UserRegister, UserOut, UserUpdate, TokenResponse, ChangePassword, UserPublic, StreakOut
 from utils.auth import hash_password, verify_password, create_access_token, get_current_user
+from utils.streak import update_user_streak
 
 
 class DeleteAccountRequest(BaseModel):
@@ -48,12 +49,46 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             headers={"WWW-Authenticate": "Bearer"},
         )
     token = create_access_token(data={"sub": str(user.id)})
-    return {"access_token": token, "token_type": "bearer"}
+    streak = update_user_streak(user, db)
+    return {"access_token": token, "token_type": "bearer", "streak": streak}
 
 
 @router.get("/me", response_model=UserOut)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.get("/streak", response_model=StreakOut)
+def get_streak(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Call this on app mount / resume (not just login) — e.g. when the tab
+    regains focus or the app comes back to the foreground. It's safe to call
+    repeatedly; the streak only advances once per calendar day per user.
+    `streak_increased_today` tells the frontend whether to show the popup.
+    """
+    return update_user_streak(current_user, db)
+
+
+@router.get("/streak/history", response_model=List[str])
+def get_streak_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns the dates (YYYY-MM-DD) the user has been credited a streak visit,
+    most recent 120 days — powers the login-streak calendar view.
+    """
+    rows = (
+        db.query(StreakLog.date)
+        .filter(StreakLog.user_id == current_user.id)
+        .order_by(StreakLog.date.desc())
+        .limit(120)
+        .all()
+    )
+    return [r[0].isoformat() for r in rows]
 
 
 @router.put("/me", response_model=UserOut)
