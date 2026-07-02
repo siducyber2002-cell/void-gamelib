@@ -790,23 +790,65 @@ export default function RegisterPage() {
 
         /* Responsive */
         @media (max-width: 900px) {
-          .void-root { overflow-y: auto; overflow-x: hidden; }
-          .left-panel { display: none; }
+          .void-root { flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+
+          /* Instead of hiding the logo, show a compact centered header */
+          .left-panel {
+            display: flex;
+            flex: none;
+            flex-direction: column;
+            align-items: center;
+            padding: 1.5rem 1rem 0.4rem;
+          }
+          .tech-corner, .tech-readout { display: none; }
+
+          .void-logo-wrap { justify-content: center; }
+          .wm-v { font-size: 2.1rem; margin-right: 2px; }
+          .wm-o-wrap { width: 42px; height: 42px; }
+          .wm-o-wrap svg { width: 42px; height: 42px; }
+          .wm-o-wrap .orb-ring-1 { width: 50px; height: 50px; }
+          .wm-o-wrap .orb-ring-2 { width: 58px; height: 58px; }
+          .wm-o-wrap .orb-ring-3 { width: 66px; height: 66px; }
+          .wm-o-wrap .orb-scanner { width: 50px; height: 50px; }
+          .wm-i-wrap { width: 27px; height: 33px; margin: 0 2px; }
+          .wm-i-wrap svg { width: 27px; height: 33px; }
+          .wm-d svg { width: 48px; height: 37px; }
+
+          .left-tagline {
+            margin-top: 0.7rem;
+            margin-bottom: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+          }
+          .glitch-title { font-size: 1.35rem; }
+          .glitch-sub { font-size: 0.68rem; line-height: 1.6; }
+          .explore-btn { margin-top: 0.85rem; }
+
           .right-panel {
             width: 100%;
-            min-height: 100vh;
+            min-height: auto;
             align-items: flex-start;
-            padding: 4.5rem 1.25rem 2rem;
+            padding: 0.5rem 1.25rem 2rem;
           }
         }
         @media (max-width: 480px) {
-          .register-card { padding: 1.75rem 1.3rem; border-radius: 14px; }
-          .card-title { font-size: 1.15rem; }
-          .card-subtitle { font-size: 0.78rem; }
-          .divider { margin: 1rem 0; }
-          .field-wrap { margin-bottom: 0.7rem; }
-          .field-icon { width: 38px; height: 38px; }
-          .field-input { font-size: 0.92rem; }
+          .left-panel { padding: 1.2rem 1rem 0.2rem; }
+          .glitch-title { font-size: 1.1rem; }
+          .glitch-sub { font-size: 0.6rem; }
+          .explore-btn { display: none; }
+
+          .register-card { padding: 1.5rem 1.3rem; border-radius: 14px; }
+          .card-title { font-size: 1.1rem; }
+          .card-subtitle { font-size: 0.75rem; }
+          .divider { margin: 0.85rem 0; }
+          .field-wrap { margin-bottom: 0.6rem; }
+          .field-label { font-size: 0.72rem; }
+          .field-icon { width: 34px; height: 34px; }
+          .field-input { font-size: 0.9rem; padding: 0.55rem 0.55rem 0.55rem 0; }
+          .strength-wrap { margin-top: 0.35rem; }
+          .register-btn { padding: 0.75rem 1rem; margin-top: 0.2rem; }
           .mode-toggle { top: 1rem; right: 1rem; }
         }
       `}</style>

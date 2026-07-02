@@ -339,6 +339,8 @@ export default function DiscoverPage() {
         .compass-spin        { animation: compassSpin 8s linear infinite; }
         .compass-pulse       { animation: compassPulse 2.6s ease-out infinite; }
         .compass-pulse-delay { animation: compassPulse 2.6s ease-out 1.3s infinite; }
+        .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
       {trailerGame && <TrailerModal gameTitle={trailerGame} onClose={() => setTrailerGame(null)} onXpAwarded={awardTrailerXp} />}
@@ -347,13 +349,13 @@ export default function DiscoverPage() {
 
         {/* ── Header ── */}
         <div
-          className="rounded-2xl px-7 py-6 flex items-center justify-between"
+          className="rounded-2xl px-4 sm:px-7 py-5 sm:py-6 flex items-center justify-between gap-3"
           style={{ background: surfaceBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: accent }}>RAWG Database</p>
-            <h1 className="text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>Discover Games</h1>
-            <p className="text-sm mt-2" style={{ color: textSub }}>
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>Discover Games</h1>
+            <p className="text-xs sm:text-sm mt-2" style={{ color: textSub }}>
               Explore 500,000+ games
               {!loading && totalCount > 0 && (
                 <> · <span className="font-bold" style={{ color: accent }}>{totalCount.toLocaleString()}</span> results</>
@@ -362,22 +364,23 @@ export default function DiscoverPage() {
           </div>
 
           {/* Animated compass icon */}
-          <div className="relative w-14 h-14 flex items-center justify-center">
+          <div className="relative w-11 h-11 sm:w-14 sm:h-14 flex items-center justify-center shrink-0">
             <span className="absolute inset-0 rounded-2xl compass-pulse"       style={{ background: accent + '28' }} />
             <span className="absolute inset-0 rounded-2xl compass-pulse-delay" style={{ background: accent + '28' }} />
             <div
-              className="relative w-14 h-14 rounded-2xl flex items-center justify-center"
+              className="relative w-11 h-11 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center"
               style={{ background: accent + '22', border: `1px solid ${accent}35` }}
             >
-              <Compass size={26} style={{ color: accent }} strokeWidth={1.8} className="compass-spin" />
+              <Compass size={20} style={{ color: accent }} strokeWidth={1.8} className="compass-spin sm:hidden" />
+              <Compass size={26} style={{ color: accent }} strokeWidth={1.8} className="compass-spin hidden sm:block" />
             </div>
           </div>
         </div>
 
         {/* ── Search + Sort + Filter toggle ── */}
-        <div className="flex gap-3 flex-wrap">
+        <div className="flex flex-col sm:flex-row gap-3">
           {/* Search */}
-          <div className="flex-1 min-w-48 relative">
+          <div className="flex-1 min-w-0 sm:min-w-48 relative">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: textSub }} />
             <input
               type="text"
@@ -405,30 +408,32 @@ export default function DiscoverPage() {
             )}
           </div>
 
-          {/* Sort */}
-          <select
-            value={sortBy}
-            onChange={e => { setSortBy(e.target.value); setPage(1) }}
-            className="px-4 py-3 rounded-xl text-sm font-bold outline-none cursor-pointer"
-            style={{ background: inputBg, border: `1.5px solid ${inputBorder}`, color: textPrimary }}
-          >
-            {SORT_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
+          <div className="flex gap-3">
+            {/* Sort */}
+            <select
+              value={sortBy}
+              onChange={e => { setSortBy(e.target.value); setPage(1) }}
+              className="flex-1 sm:flex-none px-4 py-3 rounded-xl text-sm font-bold outline-none cursor-pointer min-w-0"
+              style={{ background: inputBg, border: `1.5px solid ${inputBorder}`, color: textPrimary }}
+            >
+              {SORT_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
 
-          {/* Filter toggle */}
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-150"
-            style={showFilters || activeFilters.length > 0
-              ? { background: accent + '18', border: `1.5px solid ${accent}`, color: accent }
-              : { background: inputBg, border: `1.5px solid ${inputBorder}`, color: textSub }
-            }
-          >
-            <SlidersHorizontal size={15} />
-            Filters {activeFilters.length > 0 && `(${activeFilters.length})`}
-          </button>
+            {/* Filter toggle */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-150 whitespace-nowrap"
+              style={showFilters || activeFilters.length > 0
+                ? { background: accent + '18', border: `1.5px solid ${accent}`, color: accent }
+                : { background: inputBg, border: `1.5px solid ${inputBorder}`, color: textSub }
+              }
+            >
+              <SlidersHorizontal size={15} />
+              Filters {activeFilters.length > 0 && `(${activeFilters.length})`}
+            </button>
+          </div>
         </div>
 
         {/* ── Filter panel ── */}
@@ -534,17 +539,17 @@ export default function DiscoverPage() {
 
         {/* ── Pagination ── */}
         {!loading && totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 pt-2 pb-6">
+          <div className="no-scrollbar flex items-center justify-start sm:justify-center gap-2 pt-2 pb-6 overflow-x-auto px-1">
             <button
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 disabled:opacity-40"
+              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 disabled:opacity-40"
               style={{ background: tabBarBg, border: `1px solid ${cardBorder}`, color: textSub }}
             >
-              <ChevronLeft size={14} /> Prev
+              <ChevronLeft size={14} /> <span className="hidden sm:inline">Prev</span>
             </button>
 
-            <div className="flex gap-1">
+            <div className="flex gap-1 shrink-0">
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 let p
                 if (totalPages <= 5)          p = i + 1
@@ -555,7 +560,7 @@ export default function DiscoverPage() {
                   <button
                     key={p}
                     onClick={() => setPage(p)}
-                    className="w-8 h-8 rounded-lg text-xs font-bold transition-all duration-150"
+                    className="w-8 h-8 shrink-0 rounded-lg text-xs font-bold transition-all duration-150"
                     style={p === page
                       ? { background: accent, color: '#fff', boxShadow: `0 2px 10px ${accent}55` }
                       : { background: tabBarBg, border: `1px solid ${cardBorder}`, color: textSub }
@@ -570,10 +575,10 @@ export default function DiscoverPage() {
             <button
               onClick={() => setPage(p => Math.min(totalPages, p + 1))}
               disabled={page === totalPages}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 disabled:opacity-40"
+              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 disabled:opacity-40"
               style={{ background: tabBarBg, border: `1px solid ${cardBorder}`, color: textSub }}
             >
-              Next <ChevronRight size={14} />
+              <span className="hidden sm:inline">Next</span> <ChevronRight size={14} />
             </button>
           </div>
         )}

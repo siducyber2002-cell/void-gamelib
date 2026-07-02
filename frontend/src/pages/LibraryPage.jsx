@@ -220,6 +220,11 @@ export default function LibraryPage() {
       className="relative min-h-screen animate-fade-in"
       style={{ background: pageBg, fontFamily: 'DM Sans, sans-serif' }}
     >
+      <style>{`
+        .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
+
       {/* Animated watermark */}
       <WatermarkBg images={bgImages} isDark={isDark} />
 
@@ -228,7 +233,7 @@ export default function LibraryPage() {
 
         {/* Header */}
         <div
-          className="rounded-2xl px-7 py-6 flex items-center justify-between"
+          className="rounded-2xl px-4 sm:px-7 py-5 sm:py-6 flex items-center justify-between gap-3"
           style={{
             background: surfaceBg,
             border: `1px solid ${cardBorder}`,
@@ -237,24 +242,25 @@ export default function LibraryPage() {
             WebkitBackdropFilter: 'blur(16px)',
           }}
         >
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: accentColors.primary }}>
               My Collection
             </p>
-            <h1 className="text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>
               Library
             </h1>
-            <p className="text-sm mt-2" style={{ color: textSub }}>
+            <p className="text-xs sm:text-sm mt-2" style={{ color: textSub }}>
               {library.length === 0
                 ? 'No games yet — start adding!'
                 : `${library.length} game${library.length !== 1 ? 's' : ''} in your collection`}
             </p>
           </div>
           <div
-            className="w-14 h-14 rounded-2xl flex items-center justify-center"
+            className="w-11 h-11 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center shrink-0"
             style={{ background: accentColors.primary + '22', border: `1px solid ${accentColors.primary}35` }}
           >
-            <Gamepad2 size={26} style={{ color: accentColors.primary }} strokeWidth={1.8} />
+            <Gamepad2 size={22} className="sm:hidden" style={{ color: accentColors.primary }} strokeWidth={1.8} />
+            <Gamepad2 size={26} className="hidden sm:block" style={{ color: accentColors.primary }} strokeWidth={1.8} />
           </div>
         </div>
 
@@ -284,9 +290,9 @@ export default function LibraryPage() {
         </div>
 
         {/* Tabs + Search */}
-        <div className="flex flex-wrap gap-3 items-center justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <div
-            className="flex items-center gap-0.5 p-1 rounded-xl"
+            className="no-scrollbar flex items-center gap-0.5 p-1 rounded-xl overflow-x-auto max-w-full"
             style={{
               background: tabBarBg,
               border: `1px solid ${cardBorder}`,
@@ -304,7 +310,7 @@ export default function LibraryPage() {
                 <button
                   key={t.id}
                   onClick={() => setTab(t.id)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 whitespace-nowrap"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 whitespace-nowrap shrink-0"
                   style={active
                     ? { background: accentColors.primary, color: '#fff', boxShadow: `0 2px 10px ${accentColors.primary}55` }
                     : { color: textSub, background: 'transparent' }
@@ -328,14 +334,14 @@ export default function LibraryPage() {
             })}
           </div>
 
-          <div className="relative">
+          <div className="relative w-full sm:w-52">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: textSub }} />
             <input
               type="text"
               placeholder="Search games…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="pl-8 pr-4 py-1.5 rounded-xl text-xs font-medium outline-none w-52"
+              className="pl-8 pr-4 py-1.5 rounded-xl text-xs font-medium outline-none w-full"
               style={{
                 background: inputBg,
                 border: `1px solid ${inputBorder}`,

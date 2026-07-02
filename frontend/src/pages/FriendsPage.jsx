@@ -66,6 +66,19 @@ export default function FriendsPage() {
   }, [])
   const chatPushPx = chatFriend && isWideEnough ? 384 : 0
 
+  // ── mobile layout detection ──────────────────────────────
+  // This page is styled with inline styles (no Tailwind breakpoints), so
+  // responsive behavior for the stats strip / tabs row / top row is driven
+  // from JS instead of CSS media queries.
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  )
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   // ── helpers ───────────────────────────────────────────────
   const getPartner = (f) => (f.requester.id === user?.id ? f.addressee : f.requester)
 
@@ -367,11 +380,15 @@ export default function FriendsPage() {
   // ── main render ───────────────────────────────────────────
   return (
     <>
+      <style>{`
+        .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
       <div
         className="animate-fade-in"
         style={{
-          display: 'flex', flexDirection: 'column', gap: 22,
-          padding: '28px 32px',
+          display: 'flex', flexDirection: 'column', gap: isMobile ? 16 : 22,
+          padding: isMobile ? '18px 16px' : '28px 32px',
           marginRight: chatPushPx,
           transition: 'margin-right 0.3s',
           minHeight: '100%',
@@ -379,12 +396,18 @@ export default function FriendsPage() {
       >
 
         {/* ── TOP ROW: title + add btn ─────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          alignItems: isMobile ? 'stretch' : 'flex-end',
+          justifyContent: 'space-between',
+          gap: isMobile ? 14 : 0,
+        }}>
           <div>
             <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', color: ACCENT.primary, marginBottom: 4 }}>
               YOUR SQUAD
             </p>
-            <h1 style={{ fontSize: 36, fontWeight: 900, color: txtPri, lineHeight: 1, marginBottom: 6 }}>
+            <h1 style={{ fontSize: isMobile ? 26 : 36, fontWeight: 900, color: txtPri, lineHeight: 1, marginBottom: 6 }}>
               Friends
             </h1>
             <p style={{ fontSize: 13, color: txtSec }}>
@@ -395,11 +418,12 @@ export default function FriendsPage() {
           <button
             onClick={() => setTab('Find People')}
             style={{
-              display: 'flex', alignItems: 'center', gap: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               padding: '10px 20px', borderRadius: 12, border: 'none',
               background: `linear-gradient(135deg, ${ACCENT.primary}, ${ACCENT.secondary})`,
               color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer',
               boxShadow: `0 6px 20px ${ACCENT.primary}50`, transition: 'opacity 0.15s',
+              width: isMobile ? '100%' : 'auto',
             }}
             onMouseEnter={e => { e.currentTarget.style.opacity = '0.85' }}
             onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
@@ -409,18 +433,22 @@ export default function FriendsPage() {
         </div>
 
         {/* ── STATS STRIP ──────────────────────────────────── */}
-        <div style={{
-          display: 'flex', alignItems: 'center',
-          background: bgCard, border: `1px solid ${borderClr}`,
-          borderRadius: 16, padding: '0 24px', overflow: 'hidden',
-        }}>
+        <div
+          className="no-scrollbar"
+          style={{
+            display: 'flex', alignItems: 'center',
+            background: bgCard, border: `1px solid ${borderClr}`,
+            borderRadius: 16, padding: isMobile ? '0 16px' : '0 24px',
+            overflowX: isMobile ? 'auto' : 'hidden',
+          }}
+        >
           {stats.map((s, i) => (
-            <div key={s.label} style={{ display: 'flex', alignItems: 'stretch' }}>
+            <div key={s.label} style={{ display: 'flex', alignItems: 'stretch', flexShrink: 0 }}>
               {i > 0 && (
-                <div style={{ width: 1, background: borderClr, margin: '0 24px', alignSelf: 'stretch', minHeight: 64 }} />
+                <div style={{ width: 1, background: borderClr, margin: isMobile ? '0 16px' : '0 24px', alignSelf: 'stretch', minHeight: 64, flexShrink: 0 }} />
               )}
-              <div style={{ padding: '18px 0', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: txtMut }}>
+              <div style={{ padding: '18px 0', display: 'flex', flexDirection: 'column', gap: 3, flexShrink: 0 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: txtMut, whiteSpace: 'nowrap' }}>
                   {s.label}
                 </span>
                 <span style={{ fontSize: 28, fontWeight: 900, color: s.color, lineHeight: 1 }}>
@@ -432,18 +460,31 @@ export default function FriendsPage() {
         </div>
 
         {/* ── TABS (underline style) + search ──────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: `1px solid ${borderClr}` }}>
-          <div style={{ display: 'flex', gap: 0 }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: isMobile ? 'column' : 'row',
+          alignItems: isMobile ? 'stretch' : 'center',
+          justifyContent: 'space-between',
+          gap: isMobile ? 10 : 0,
+        }}>
+          <div
+            className="no-scrollbar"
+            style={{
+              display: 'flex', gap: 0,
+              overflowX: 'auto',
+              borderBottom: `1px solid ${borderClr}`,
+            }}
+          >
             {TABS.map(t => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 style={{
-                  position: 'relative', padding: '10px 18px',
+                  position: 'relative', padding: '10px 18px', flexShrink: 0,
                   background: 'transparent', border: 'none', cursor: 'pointer',
                   fontSize: 13, fontWeight: 600, color: tab === t ? ACCENT.primary : txtSec,
                   borderBottom: tab === t ? `2px solid ${ACCENT.primary}` : '2px solid transparent',
-                  marginBottom: -1, transition: 'color 0.15s',
+                  marginBottom: -1, transition: 'color 0.15s', whiteSpace: 'nowrap',
                 }}
               >
                 {t}
@@ -461,7 +502,7 @@ export default function FriendsPage() {
           </div>
 
           {tab === 'Friends' && (
-            <div style={{ position: 'relative', marginBottom: 1 }}>
+            <div style={{ position: 'relative', marginBottom: isMobile ? 0 : 1 }}>
               <Search size={13} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />
               <input
                 value={friendSearch}
@@ -471,7 +512,8 @@ export default function FriendsPage() {
                   paddingLeft: 30, paddingRight: 14, paddingTop: 7, paddingBottom: 7,
                   borderRadius: 9, border: `1px solid ${borderClr}`,
                   fontSize: 12, background: bgInput, color: txtPri,
-                  outline: 'none', width: 190,
+                  outline: 'none', width: isMobile ? '100%' : 190,
+                  boxSizing: 'border-box',
                 }}
                 onFocus={e => { e.target.style.borderColor = ACCENT.primary }}
                 onBlur={e => { e.target.style.borderColor = borderClr }}

@@ -138,7 +138,7 @@ export default function ProfilePage() {
         }
       `}</style>
 
-      <div className="relative px-6 py-7 flex flex-col gap-5 max-w-3xl" style={{ zIndex: 1 }}>
+      <div className="relative px-4 sm:px-6 py-5 sm:py-7 flex flex-col gap-5 max-w-3xl" style={{ zIndex: 1 }}>
 
         {/* ── Profile Card ── */}
         <div className="rounded-2xl overflow-hidden"
@@ -152,7 +152,7 @@ export default function ProfilePage() {
             <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 60%, rgba(0,0,0,0.3))' }} />
           </div>
 
-          <div className="px-6 pb-6 relative">
+          <div className="px-4 sm:px-6 pb-6 relative">
             {/* Avatar + actions row */}
             <div className="flex items-end justify-between -mt-10 mb-4">
               <div className="relative w-20 h-20 flex items-center justify-center">
@@ -220,12 +220,12 @@ export default function ProfilePage() {
             </div>
 
             {/* Favourite game */}
-            <div className="flex items-center gap-2 mt-3">
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
               <Star size={13} fill="#f59e0b" stroke="#f59e0b" />
               <span className="text-sm font-semibold" style={{ color: textSub }}>Favourite:</span>
               {editing
                 ? <input value={form.favorite_game} onChange={e => setForm({ ...form, favorite_game: e.target.value })}
-                    style={{ ...inputStyle, width: '180px', color: accent, fontWeight: 700 }} />
+                    style={{ ...inputStyle, width: '100%', maxWidth: '180px', color: accent, fontWeight: 700 }} />
                 : <span className="text-sm font-bold" style={{ color: accent }}>{form.favorite_game}</span>
               }
             </div>
@@ -261,9 +261,9 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Stats ── */}
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {STATS.map(stat => (
-            <div key={stat.label} className="rounded-2xl p-4 text-center flex flex-col items-center gap-1.5"
+            <div key={stat.label} className="rounded-2xl p-3 sm:p-4 text-center flex flex-col items-center gap-1.5"
               style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-0.5"
                 style={{ background: stat.color + '18' }}>
@@ -271,7 +271,7 @@ export default function ProfilePage() {
               </div>
               {loadingStats
                 ? <div className="w-8 h-6 rounded animate-pulse" style={{ background: skeletonBg }} />
-                : <p className="text-2xl font-black" style={{ color: stat.color }}>{stat.value}</p>
+                : <p className="text-xl sm:text-2xl font-black" style={{ color: stat.color }}>{stat.value}</p>
               }
               <p className="text-[11px] font-semibold" style={{ color: textSub }}>{stat.label}</p>
             </div>
