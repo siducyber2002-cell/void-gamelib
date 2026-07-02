@@ -1,8 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
-import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Area, AreaChart
-} from 'recharts'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Gamepad2, Users, CheckCircle, PlayCircle,
   Bookmark, Heart, TrendingUp, Activity, Plus, UserPlus
@@ -73,45 +69,494 @@ function buildLineData(library) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ProgressRing({ pct, size = 140, stroke = 12, color }) {
-  const r      = (size - stroke) / 2
-  const circ   = 2 * Math.PI * r
-  const offset = circ - (pct / 100) * circ
-  return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size/2} cy={size/2} r={r} fill="none"
-        stroke="rgba(168,85,247,0.12)" strokeWidth={stroke} />
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color}
-        strokeWidth={stroke} strokeLinecap="round"
-        strokeDasharray={circ} strokeDashoffset={offset}
-        style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1)', filter: `drop-shadow(0 0 6px ${color}88)` }} />
-    </svg>
-  )
-}
+function ProgressCylinder({ pct, color, isDark, textPrimary, textSub }) {
+  const [progress, setProgress] = useState(0)
+  const rafRef = useRef(0)
+  const startRef = useRef(null)
 
-const PieTooltip = ({ active, payload }) => {
-  if (!active || !payload?.length) return null
-  const { name, value } = payload[0].payload
+  useEffect(() => {
+    startRef.current = null
+    const animate = (ts) => {
+      if (startRef.current === null) startRef.current = ts
+      const t = Math.min((ts - startRef.current) / 1300, 1)
+      setProgress((1 - Math.pow(1 - t, 3)) * pct)
+      if (t < 1) rafRef.current = requestAnimationFrame(animate)
+    }
+    rafRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [pct])
+
+  const bubbles = useMemo(() => (
+    Array.from({ length: 7 }, (_, i) => ({
+      id: i,
+      left: -26 + Math.random() * 52,
+      size: 1.6 + Math.random() * 2,
+      duration: 2.6 + Math.random() * 2,
+      delay: Math.random() * 4,
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ), [])
+
+  // Tube geometry — a capsule/pill shape
+  const W = 120, H = 220
+  const tubeX = 14, tubeY = 10, tubeW = 92, tubeH = 200, tubeR = 46
+  const innerX = 18, innerW = 84
+  const bottomY = tubeY + tubeH - 4
+  const topY = tubeY + 4
+  const waterY = bottomY - (progress / 100) * (tubeH - 8)
+
+  const buildWave = (yLevel, amplitude, wavelength) => {
+    const pts = []
+    for (let x = innerX - wavelength; x <= innerX + innerW + wavelength; x += 4) {
+      const yy = yLevel + amplitude * Math.sin((x / wavelength) * Math.PI * 2)
+      pts.push(`${x.toFixed(1)},${yy.toFixed(1)}`)
+    }
+    return `M${pts.join(' L')} L${innerX + innerW + wavelength},${bottomY} L${innerX - wavelength},${bottomY} Z`
+  }
+
   return (
-    <div style={{
-      background: 'rgba(15,18,30,0.95)', border: `1px solid ${STATUS_COLORS[name]}44`,
-      borderRadius: 10, padding: '6px 12px', fontSize: 13, fontWeight: 700,
-      color: '#e8edf5', backdropFilter: 'blur(8px)',
-    }}>
-      {name}: <span style={{ color: STATUS_COLORS[name] }}>{value}</span>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+      <span style={{ fontSize: 34, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>{Math.round(progress)}%</span>
+
+      <div style={{ position: 'relative', width: W, height: H }}>
+        <div className="dash-donut-breathe" style={{
+          position: 'absolute', left: '50%', top: '50%', width: 110, height: 190,
+          transform: 'translate(-50%,-50%)', borderRadius: 60, background: color + '25',
+          filter: 'blur(26px)',
+        }} />
+
+        <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ position: 'relative', overflow: 'visible' }}>
+          <defs>
+            <clipPath id="dashTubeClip">
+              <rect x={innerX} y={topY} width={innerW} height={bottomY - topY} rx={tubeR - 4} />
+            </clipPath>
+            <linearGradient id="dashLiquidGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"  stopColor={color} stopOpacity={0.95} />
+              <stop offset="100%" stopColor={color} stopOpacity={0.6} />
+            </linearGradient>
+          </defs>
+
+          {/* Tube outline */}
+          <rect x={tubeX} y={tubeY} width={tubeW} height={tubeH} rx={tubeR}
+            fill={isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)'}
+            stroke={isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'} strokeWidth={2} />
+
+          {/* Liquid, clipped to the tube */}
+          <g clipPath="url(#dashTubeClip)">
+            <path d={buildWave(waterY, 3.5, 43)} fill={color} opacity={0.35} className="dash-wave-scroll-slow" />
+            <path d={buildWave(waterY, 2.5, 43)} fill="url(#dashLiquidGrad)" className="dash-wave-scroll" />
+
+            {bubbles.map(b => (
+              <circle key={b.id} cx={innerX + innerW / 2 + b.left} cy={bottomY - 6} r={b.size}
+                fill="#fff" opacity={0}
+                style={{ animation: `dashBubbleRise ${b.duration}s ease-in ${b.delay}s infinite` }} />
+            ))}
+          </g>
+        </svg>
+      </div>
+
+      <span style={{ fontSize: 11, color: textSub, marginTop: -4 }}>complete</span>
     </div>
   )
 }
 
-const LineTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null
+// Animated donut chart (replaces the old Recharts pie) — sweeps in on mount,
+// hover-syncs between the chart slices and the legend rows on the right.
+function LibraryDonut({ items, total, isDark, textPrimary, textSub }) {
+  const [progress, setProgress] = useState(0)
+  const [hovered, setHovered] = useState(null)
+  const rafRef = useRef(0)
+  const startRef = useRef(null)
+
+  const sum = items.reduce((s, d) => s + d.value, 0)
+  const cx = 95, cy = 95, outerR = 78, innerR = 50
+  const TAU = Math.PI * 2
+  const GAP = 0.035
+
+  useEffect(() => {
+    startRef.current = null
+    const animate = (ts) => {
+      if (startRef.current === null) startRef.current = ts
+      const t = Math.min((ts - startRef.current) / 1200, 1)
+      setProgress(1 - Math.pow(1 - t, 3))
+      if (t < 1) rafRef.current = requestAnimationFrame(animate)
+    }
+    rafRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [sum])
+
+  const activeColors = items.filter(d => d.value > 0).map(d => d.color)
+  const bubbles = useMemo(() => {
+    const palette = activeColors.length ? activeColors : ['#a855f7']
+    return Array.from({ length: 11 }, (_, i) => ({
+      id: i,
+      left: (Math.random() - 0.5) * (innerR - 16) * 2,
+      size: 1.6 + Math.random() * 2.2,
+      duration: 3 + Math.random() * 2.5,
+      delay: Math.random() * 4.5,
+      color: palette[i % palette.length],
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const polar = (angle, r) => [cx + r * Math.cos(angle), cy + r * Math.sin(angle)]
+  const slicePath = (a0, a1) => {
+    const [x1, y1] = polar(a0, outerR)
+    const [x2, y2] = polar(a1, outerR)
+    const [x3, y3] = polar(a1, innerR)
+    const [x4, y4] = polar(a0, innerR)
+    const large = a1 - a0 > Math.PI ? 1 : 0
+    return `M ${x1} ${y1} A ${outerR} ${outerR} 0 ${large} 1 ${x2} ${y2} L ${x3} ${y3} A ${innerR} ${innerR} 0 ${large} 0 ${x4} ${y4} Z`
+  }
+
+  let cursor = -Math.PI / 2
+  const slices = items.filter(d => d.value > 0).map((d, i) => {
+    const sweep = (d.value / sum) * TAU * progress
+    const start = cursor + GAP / 2
+    const end = cursor + sweep - GAP / 2
+    cursor += (d.value / sum) * TAU * progress
+    return { ...d, start, end, sweep, idx: i }
+  })
+
+  const activeSlice = hovered !== null ? slices.find(s => s.idx === hovered) : null
+
   return (
-    <div style={{
-      background: 'rgba(15,18,30,0.95)', border: `1px solid ${ACCENT}44`,
-      borderRadius: 10, padding: '6px 12px', fontSize: 13, fontWeight: 700,
-      color: '#e8edf5',
-    }}>
-      {label}: <span style={{ color: ACCENT }}>{payload[0].value} game{payload[0].value !== 1 ? 's' : ''}</span>
+    <>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+      <div style={{ width: '45%', display: 'flex', justifyContent: 'center', flexShrink: 0, position: 'relative' }}>
+        <div className="dash-donut-breathe" style={{
+          position: 'absolute', width: 150, height: 150, borderRadius: '50%',
+          background: (activeSlice?.color || items.find(d => d.value > 0)?.color || '#a855f7') + '30',
+          filter: 'blur(28px)', transition: 'background 0.3s',
+        }} />
+        <svg width={190} height={190} viewBox="0 0 190 190" style={{ overflow: 'visible', position: 'relative' }} className="dash-donut-breathe">
+          <defs>
+            <clipPath id="dashBubbleClip">
+              <circle cx={cx} cy={cy} r={innerR - 4} />
+            </clipPath>
+          </defs>
+          <g clipPath="url(#dashBubbleClip)">
+            {bubbles.map(b => (
+              <circle
+                key={b.id}
+                cx={cx + b.left}
+                cy={cy + innerR - 8}
+                r={b.size}
+                fill={b.color}
+                opacity={0}
+                style={{ animation: `dashBubbleRise ${b.duration}s ease-in ${b.delay}s infinite` }}
+              />
+            ))}
+          </g>
+          {slices.map(slice => slice.sweep > 0.001 && (
+            <path
+              key={slice.label}
+              d={slicePath(slice.start, slice.end)}
+              fill={slice.color}
+              opacity={hovered !== null && hovered !== slice.idx ? 0.35 : 1}
+              style={{
+                transformOrigin: `${cx}px ${cy}px`,
+                transform: hovered === slice.idx ? 'scale(1.06)' : 'scale(1)',
+                transition: 'opacity 0.2s ease, transform 0.2s ease',
+                cursor: 'pointer',
+                filter: hovered === slice.idx ? `drop-shadow(0 0 8px ${slice.color}aa)` : 'none',
+              }}
+              onMouseEnter={() => setHovered(slice.idx)}
+              onMouseLeave={() => setHovered(null)}
+            />
+          ))}
+          <text x={cx} y={cy - 6} textAnchor="middle" fill={activeSlice ? activeSlice.color : textPrimary}
+            style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 24, fontWeight: 900, transition: 'fill 0.2s ease' }}>
+            {activeSlice ? activeSlice.value : total}
+          </text>
+          <text x={cx} y={cy + 14} textAnchor="middle" fill={textSub}
+            style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            {activeSlice ? activeSlice.label : 'Total'}
+          </text>
+        </svg>
+      </div>
+
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {items.map((item, i) => {
+          const pct = sum > 0 ? Math.round((item.value / sum) * 100) : 0
+          const isActive = hovered === i
+          return (
+            <div key={item.label}
+              onMouseEnter={() => setHovered(i)}
+              onMouseLeave={() => setHovered(null)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', opacity: hovered !== null && !isActive ? 0.5 : 1, transition: 'opacity 0.2s ease' }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                background: item.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <item.icon size={12} style={{ color: item.color }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: textPrimary }}>{item.label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: item.color }}>{item.value}</span>
+                </div>
+                <div style={{ height: 5, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', borderRadius: 99, background: item.color,
+                    width: `${pct}%`, transition: 'width 1s cubic-bezier(.4,0,.2,1)',
+                    boxShadow: isActive ? `0 0 6px ${item.color}66` : 'none',
+                  }} />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+
+    {/* Circular tab-style summary chips — fills the space below the chart */}
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 24 }}>
+      {items.map((item, i) => {
+        const isActive = hovered === i
+        return (
+          <button
+            key={item.label}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '7px 14px 7px 7px', borderRadius: 999, cursor: 'pointer',
+              background: isActive ? item.color + '20' : (isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'),
+              border: `1px solid ${isActive ? item.color + '55' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)')}`,
+              transition: 'background 0.2s ease, border-color 0.2s ease, transform 0.15s ease',
+              transform: isActive ? 'scale(1.04)' : 'scale(1)',
+            }}
+          >
+            <span style={{
+              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+              background: item.color + '25', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <item.icon size={11} style={{ color: item.color }} />
+            </span>
+            <span style={{ fontSize: 12, fontWeight: 700, color: textPrimary }}>{item.label}</span>
+            <span style={{
+              fontSize: 11, fontWeight: 900, color: item.color, minWidth: 16, textAlign: 'center',
+              background: item.color + '18', borderRadius: 999, padding: '1px 6px',
+            }}>{item.value}</span>
+          </button>
+        )
+      })}
+    </div>
+  </>
+  )
+}
+
+// Animated area/line chart (replaces the old Recharts AreaChart) — draws in on mount,
+// then a live comet-style pulse continuously travels the line like a heart-rate monitor.
+function ActivityAreaChart({ data, color, isDark, textSub, gridLine, axisColor }) {
+  const [progress, setProgress] = useState(0)
+  const [hoverIdx, setHoverIdx] = useState(null)
+  const [livePhase, setLivePhase] = useState(0)
+  const rafRef = useRef(0)
+  const startRef = useRef(null)
+  const liveRafRef = useRef(0)
+  const liveStartRef = useRef(null)
+
+  const W = 640, H = 200
+  const PAD = { top: 14, right: 12, bottom: 26, left: 30 }
+  const IW = W - PAD.left - PAD.right
+  const IH = H - PAD.top - PAD.bottom
+  const lastIdx = data.length - 1
+
+  const rawMax = Math.max(...data.map(d => d.games), 0)
+  const MAX = rawMax === 0 ? 4 : Math.ceil(rawMax * 1.25)
+
+  const sx = (i) => PAD.left + (i / (lastIdx || 1)) * IW
+  const sy = (v) => PAD.top + IH - (v / MAX) * IH
+
+  const linePath = (p) => {
+    if (lastIdx <= 0) return ''
+    const visible = Math.floor(p * lastIdx)
+    const frac = p * lastIdx - visible
+    const pts = data.slice(0, visible + 1).map((d, i) => [sx(i), sy(d.games)])
+    if (visible < lastIdx) {
+      const [x1, y1] = [sx(visible), sy(data[visible].games)]
+      const [x2, y2] = [sx(visible + 1), sy(data[visible + 1].games)]
+      pts.push([x1 + (x2 - x1) * frac, y1 + (y2 - y1) * frac])
+    }
+    return pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt[0].toFixed(1)},${pt[1].toFixed(1)}`).join(' ')
+  }
+
+  const areaPath = (p) => {
+    const line = linePath(p)
+    if (!line) return ''
+    const visible = Math.floor(p * lastIdx)
+    const frac = p * lastIdx - visible
+    const endX = visible < lastIdx ? sx(visible) + (sx(visible + 1) - sx(visible)) * frac : sx(lastIdx)
+    const base = PAD.top + IH
+    return `${line} L${endX.toFixed(1)},${base} L${PAD.left},${base} Z`
+  }
+
+  // Point + partial-segment helpers for the continuous traveling pulse
+  const pointAt = (p) => {
+    if (lastIdx <= 0) return [sx(0), sy(data[0]?.games || 0)]
+    const clamped = Math.max(0, Math.min(1, p))
+    const idxF = clamped * lastIdx
+    const i0 = Math.floor(idxF)
+    const i1 = Math.min(i0 + 1, lastIdx)
+    const frac = idxF - i0
+    const x = sx(i0) + (sx(i1) - sx(i0)) * frac
+    const y = sy(data[i0].games) + (sy(data[i1].games) - sy(data[i0].games)) * frac
+    return [x, y]
+  }
+  const segmentPath = (p0, p1, steps = 14) => {
+    const pts = []
+    for (let s = 0; s <= steps; s++) {
+      const p = p0 + (p1 - p0) * (s / steps)
+      pts.push(pointAt(p))
+    }
+    return pts.map((pt, i) => `${i === 0 ? 'M' : 'L'}${pt[0].toFixed(1)},${pt[1].toFixed(1)}`).join(' ')
+  }
+
+  useEffect(() => {
+    startRef.current = null
+    const animate = (ts) => {
+      if (startRef.current === null) startRef.current = ts
+      const t = Math.min((ts - startRef.current) / 1000, 1)
+      setProgress(1 - Math.pow(1 - t, 3))
+      if (t < 1) rafRef.current = requestAnimationFrame(animate)
+    }
+    rafRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [data])
+
+  // Continuous traveling pulse — starts once the draw-in finishes, loops forever
+  useEffect(() => {
+    if (progress < 1) return
+    liveStartRef.current = null
+    const DURATION = 2600
+    const loop = (ts) => {
+      if (liveStartRef.current === null) liveStartRef.current = ts
+      const elapsed = (ts - liveStartRef.current) % DURATION
+      setLivePhase(elapsed / DURATION)
+      liveRafRef.current = requestAnimationFrame(loop)
+    }
+    liveRafRef.current = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(liveRafRef.current)
+  }, [progress, data])
+
+  const yTicks = Array.from({ length: 4 }, (_, i) => {
+    const v = Math.round((MAX * i) / 3)
+    return { v, y: sy(v) }
+  })
+
+  const handleMove = (e) => {
+    if (progress < 1) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const scale = rect.width / W
+    const relX = (e.clientX - rect.left) / scale - PAD.left
+    const idx = Math.round((relX / IW) * lastIdx)
+    if (idx >= 0 && idx <= lastIdx) setHoverIdx(idx)
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <svg width="100%" height={200} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none"
+        style={{ overflow: 'visible', cursor: progress >= 1 ? 'crosshair' : 'default' }}
+        onMouseMove={handleMove} onMouseLeave={() => setHoverIdx(null)}>
+        <defs>
+          <linearGradient id="dashAreaGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+          <filter id="dashGlow">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        {yTicks.map((t, i) => (
+          <g key={i}>
+            <line x1={PAD.left} y1={t.y} x2={W - PAD.right} y2={t.y} stroke={gridLine} strokeWidth={1} />
+            <text x={PAD.left - 8} y={t.y + 4} textAnchor="end" fill={axisColor} style={{ fontSize: 10, fontWeight: 600 }}>{t.v}</text>
+          </g>
+        ))}
+
+        {data.map((d, i) => (
+          <text key={i} x={sx(i)} y={H - 8} textAnchor="middle"
+            fill={hoverIdx === i ? textSub : axisColor}
+            style={{ fontSize: 11, fontWeight: 600, transition: 'fill 0.15s' }}>
+            {d.label}
+          </text>
+        ))}
+
+        {hoverIdx !== null && (
+          <line x1={sx(hoverIdx)} y1={PAD.top} x2={sx(hoverIdx)} y2={PAD.top + IH} stroke={gridLine} strokeWidth={1} strokeDasharray="3 3" />
+        )}
+
+        <path d={areaPath(progress)} fill="url(#dashAreaGrad)" />
+        <path d={linePath(progress)} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" filter="url(#dashGlow)" />
+
+        {/* Continuous traveling pulse — like a heart-rate monitor blip sweeping the line */}
+        {progress >= 1 && lastIdx > 0 && (() => {
+          const trail = 0.16
+          const p0 = Math.max(0, livePhase - trail)
+          const [hx, hy] = pointAt(livePhase)
+          const fadeIn = Math.min(livePhase / 0.04, 1) // avoid a hard pop-in right at phase 0
+          return (
+            <>
+              <path d={segmentPath(p0, livePhase)} fill="none" stroke={color} strokeWidth={2.5}
+                strokeLinecap="round" opacity={0.55 * fadeIn} />
+              <circle cx={hx} cy={hy} r={4} fill={color} opacity={fadeIn}
+                style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
+            </>
+          )
+        })()}
+
+        {progress < 1 && lastIdx > 0 && (() => {
+          const visible = Math.floor(progress * lastIdx)
+          const frac = progress * lastIdx - visible
+          const x = visible < lastIdx ? sx(visible) + (sx(visible + 1) - sx(visible)) * frac : sx(lastIdx)
+          const v1 = data[visible].games
+          const v2 = visible < lastIdx ? data[visible + 1].games : v1
+          const y = sy(v1 + (v2 - v1) * frac)
+          return <circle cx={x} cy={y} r={4} fill={color} stroke={isDark ? '#0b0f19' : '#fff'} strokeWidth={2} />
+        })()}
+
+        {hoverIdx !== null && data.map((d, i) => (
+          <circle key={i} cx={sx(i)} cy={sy(d.games)} r={i === hoverIdx ? 5 : 3}
+            fill={i === hoverIdx ? color : (isDark ? '#0b0f19' : '#fff')}
+            stroke={color} strokeWidth={i === hoverIdx ? 0 : 1.5}
+            opacity={i === hoverIdx ? 1 : 0.4}
+            style={{ transition: 'r 0.15s, opacity 0.15s' }} />
+        ))}
+      </svg>
+
+      {/* Live pulse rings on the most recent data point */}
+      {progress >= 1 && (
+        <div style={{
+          position: 'absolute', left: `${(sx(lastIdx) / W) * 100}%`, top: sy(data[lastIdx].games),
+          width: 0, height: 0, pointerEvents: 'none',
+        }}>
+          <span className="dash-ring-pulse"       style={{ position: 'absolute', width: 14, height: 14, marginLeft: -7, marginTop: -7, borderRadius: '50%', border: `2px solid ${color}`, background: 'transparent' }} />
+          <span className="dash-ring-pulse-delay" style={{ position: 'absolute', width: 14, height: 14, marginLeft: -7, marginTop: -7, borderRadius: '50%', border: `2px solid ${color}`, background: 'transparent' }} />
+          <span style={{ position: 'absolute', width: 6, height: 6, marginLeft: -3, marginTop: -3, borderRadius: '50%', background: color }} />
+        </div>
+      )}
+
+      {hoverIdx !== null && progress >= 1 && (() => {
+        const leftPct = (sx(hoverIdx) / W) * 100
+        const flip = leftPct > 72
+        return (
+          <div style={{
+            position: 'absolute', top: PAD.top - 4,
+            left: flip ? `calc(${leftPct}% - 110px)` : `calc(${leftPct}% + 10px)`,
+            background: isDark ? 'rgba(15,18,30,0.95)' : 'rgba(255,255,255,0.98)',
+            border: `1px solid ${color}44`, borderRadius: 10, padding: '6px 12px', pointerEvents: 'none',
+          }}>
+            <p style={{ fontSize: 11, color: textSub, margin: '0 0 2px', fontWeight: 600 }}>{data[hoverIdx].label}</p>
+            <p style={{ fontSize: 14, color, margin: 0, fontWeight: 800 }}>
+              {data[hoverIdx].games} game{data[hoverIdx].games !== 1 ? 's' : ''}
+            </p>
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -178,7 +623,6 @@ export default function DashboardPage() {
   const gamesCount     = useCountUp(total)
   const friendsCount   = useCountUp(friends ?? 0)
   const completedCount = useCountUp(completed)
-  const progressVal    = useCountUp(progress)
 
   // Build line chart whenever library changes
   useEffect(() => {
@@ -253,13 +697,6 @@ export default function DashboardPage() {
   const gridLine   = isDark ? 'rgba(255,255,255,0.05)': 'rgba(0,0,0,0.05)'
   const axisColor  = isDark ? '#4a5568' : '#94a3b8'
 
-  const pieData = [
-    { name: 'Playing',   value: playing   },
-    { name: 'Completed', value: completed },
-    { name: 'Wishlist',  value: wishlist  },
-    { name: 'Favorites', value: favorites },
-  ].filter(d => d.value > 0)
-
   const breakdownItems = [
     { label: 'Playing',   value: playing,   icon: PlayCircle,  color: STATUS_COLORS.Playing   },
     { label: 'Completed', value: completed, icon: CheckCircle, color: STATUS_COLORS.Completed },
@@ -275,6 +712,41 @@ export default function DashboardPage() {
 
   return (
     <div style={{ background: pageBg, minHeight: '100vh', padding: '28px 24px 48px', fontFamily: 'DM Sans, sans-serif' }}>
+      <style>{`
+        @keyframes dashPulseRing {
+          0%   { transform: scale(0.8); opacity: 0.55; }
+          80%  { transform: scale(1.9); opacity: 0; }
+          100% { transform: scale(1.9); opacity: 0; }
+        }
+        @keyframes dashGlowBreathe {
+          0%, 100% { filter: drop-shadow(0 0 6px var(--glow-color, #a855f7)); }
+          50%      { filter: drop-shadow(0 0 15px var(--glow-color, #a855f7)); }
+        }
+        @keyframes dashBreathe {
+          0%, 100% { transform: scale(1); }
+          50%      { transform: scale(1.035); }
+        }
+        @keyframes dashFlowDash {
+          to { stroke-dashoffset: -32; }
+        }
+        @keyframes dashBubbleRise {
+          0%   { transform: translateY(0); opacity: 0; }
+          15%  { opacity: 0.85; }
+          80%  { opacity: 0.3; }
+          100% { transform: translateY(-88px); opacity: 0; }
+        }
+        @keyframes dashWaveScroll {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-43px); }
+        }
+        .dash-wave-scroll      { animation: dashWaveScroll 2.6s linear infinite; }
+        .dash-wave-scroll-slow { animation: dashWaveScroll 4s linear infinite reverse; }
+        .dash-ring-pulse       { animation: dashPulseRing 2.4s ease-out infinite; }
+        .dash-ring-pulse-delay { animation: dashPulseRing 2.4s ease-out 1.2s infinite; }
+        .dash-arc-glow         { animation: dashGlowBreathe 2.6s ease-in-out infinite; }
+        .dash-donut-breathe    { animation: dashBreathe 4s ease-in-out infinite; }
+        .dash-flow-dash        { animation: dashFlowDash 1.1s linear infinite; }
+      `}</style>
 
       {/* ── Header ── */}
       <div style={{ marginBottom: 28 }}>
@@ -305,57 +777,13 @@ export default function DashboardPage() {
           <h2 style={{ fontSize: 16, fontWeight: 800, color: textPrimary, marginBottom: 2 }}>Breakdown</h2>
           <p style={{ fontSize: 12, color: textSub, marginBottom: 20 }}>Distribution across statuses</p>
 
-          {pieData.length === 0 ? (
+          {total === 0 ? (
             <div style={{ height: 180, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
               <Gamepad2 size={32} color={textSub} strokeWidth={1.4} />
               <p style={{ fontSize: 13, color: textSub }}>Add games to see your breakdown</p>
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-              <div style={{ width: '45%', height: 190 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%"
-                      innerRadius={50} outerRadius={78} paddingAngle={3} dataKey="value"
-                      animationBegin={200} animationDuration={800}>
-                      {pieData.map(entry => (
-                        <Cell key={entry.name} fill={STATUS_COLORS[entry.name]} stroke="transparent" />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<PieTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {breakdownItems.map(item => {
-                  const pct = total > 0 ? Math.round((item.value / total) * 100) : 0
-                  return (
-                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                        background: item.color + '18', display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        <item.icon size={12} style={{ color: item.color }} />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: textPrimary }}>{item.label}</span>
-                          <span style={{ fontSize: 12, fontWeight: 800, color: item.color }}>{item.value}</span>
-                        </div>
-                        <div style={{ height: 5, borderRadius: 99, background: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-                          <div style={{
-                            height: '100%', borderRadius: 99, background: item.color,
-                            width: `${pct}%`, transition: 'width 1s cubic-bezier(.4,0,.2,1)',
-                            boxShadow: `0 0 6px ${item.color}66`,
-                          }} />
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+            <LibraryDonut items={breakdownItems} total={total} isDark={isDark} textPrimary={textPrimary} textSub={textSub} />
           )}
         </div>
 
@@ -369,16 +797,7 @@ export default function DashboardPage() {
           <p style={{ fontSize: 12, color: textSub, marginBottom: 20 }}>Games completed vs owned</p>
 
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20 }}>
-            <div style={{ position: 'relative' }}>
-              <ProgressRing pct={progress} size={140} stroke={12} color={ACCENT} />
-              <div style={{
-                position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                alignItems: 'center', justifyContent: 'center'
-              }}>
-                <span style={{ fontSize: 30, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>{progressVal}%</span>
-                <span style={{ fontSize: 11, color: textSub, marginTop: 2 }}>complete</span>
-              </div>
-            </div>
+            <ProgressCylinder pct={progress} color={ACCENT} isDark={isDark} textPrimary={textPrimary} textSub={textSub} />
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, width: '100%' }}>
               {[
@@ -414,27 +833,8 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div style={{ height: 180 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={lineData} margin={{ top: 5, right: 8, left: -28, bottom: 0 }}>
-              <defs>
-                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%"   stopColor={ACCENT} stopOpacity={0.25} />
-                  <stop offset="100%" stopColor={ACCENT} stopOpacity={0}    />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke={gridLine} strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11, fill: axisColor, fontWeight: 600 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false} allowDecimals={false} />
-              <Tooltip content={<LineTooltip />} cursor={{ stroke: ACCENT + '40', strokeWidth: 1 }} />
-              <Area
-                type="monotone" dataKey="games" stroke={ACCENT} strokeWidth={2.5}
-                fill="url(#areaGrad)" dot={{ fill: ACCENT, r: 4, strokeWidth: 0 }}
-                activeDot={{ r: 6, fill: ACCENT, stroke: isDark ? '#0b0f19' : '#fff', strokeWidth: 2 }}
-                animationDuration={1000}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+        <div style={{ height: 200 }}>
+          <ActivityAreaChart data={lineData} color={ACCENT} isDark={isDark} textSub={textSub} gridLine={gridLine} axisColor={axisColor} />
         </div>
       </div>
 

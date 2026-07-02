@@ -3,7 +3,7 @@ import {
   Play, Plus, ChevronLeft, ChevronRight, Star,
   TrendingUp, Sparkles, X, Loader2, Search,
   Sword, Crosshair, Map, Ghost, Brain, Skull, Flag, Trophy,
-  Zap, BookOpen, Bell,
+  Zap, BookOpen,
 } from 'lucide-react'
 import { useLibrary } from '../context/LibraryContext'
 import { useTheme } from '../context/ThemeContext'
@@ -576,140 +576,6 @@ function SearchPanel({results,searching,query,onOpen,onClose,t}) {
 }
 
 // ─── NOTIFICATION BELL ───────────────────────────────────────────────────────
-function NotificationBell({ t }) {
-  const [open, setOpen]       = useState(false)
-  const [requests, setReqs]   = useState([])
-  const [unread, setUnread]   = useState(0)
-  const [shaking, setShaking] = useState(false)
-  const ref = useRef(null)
-
-  const fetchNotifs = useCallback(async () => {
-    try {
-      const [reqRes, dmRes] = await Promise.all([
-        fetch('/api/friends/requests', { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }).then(r => r.ok ? r.json() : []),
-        fetch('/api/dm/unread-count',  { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }).then(r => r.ok ? r.json() : { count: 0 }),
-      ])
-      setReqs(reqRes || [])
-      const total = (reqRes?.length || 0) + (dmRes?.count || 0)
-      if (total > unread && unread !== null) { setShaking(true); setTimeout(() => setShaking(false), 600) }
-      setUnread(total)
-    } catch(e) {}
-  }, [unread])
-
-  useEffect(() => { fetchNotifs() }, [])
-  useEffect(() => { const id = setInterval(fetchNotifs, 20000); return () => clearInterval(id) }, [fetchNotifs])
-
-  // Close on outside click
-  useEffect(() => {
-    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
-    document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [])
-
-  const acceptReq = async (id) => {
-    try {
-      await fetch(`/api/friends/accept/${id}`, { method:'POST', headers:{ Authorization:`Bearer ${localStorage.getItem('token')}` } })
-      setReqs(r => r.filter(x => x.id !== id))
-      setUnread(u => Math.max(0, u - 1))
-    } catch(e) {}
-  }
-  const declineReq = async (id) => {
-    try {
-      await fetch(`/api/friends/decline/${id}`, { method:'DELETE', headers:{ Authorization:`Bearer ${localStorage.getItem('token')}` } })
-      setReqs(r => r.filter(x => x.id !== id))
-      setUnread(u => Math.max(0, u - 1))
-    } catch(e) {}
-  }
-
-  return (
-    <div ref={ref} style={{ position:'relative' }}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className={shaking ? 'bell-shake' : ''}
-        style={{
-          position:'relative', width:38, height:38, borderRadius:12,
-          display:'flex', alignItems:'center', justifyContent:'center',
-          background: open ? t.accentGlow : t.surface,
-          border:`1px solid ${open ? t.accentDim+'66' : t.border}`,
-          cursor:'pointer', transition:'all 0.2s',
-        }}
-      >
-        <Bell size={16} style={{ color: unread > 0 ? t.accent : t.textSub }}/>
-        {unread > 0 && (
-          <span style={{
-            position:'absolute', top:6, right:6, width:8, height:8,
-            borderRadius:'50%', background:'#ef4444',
-            border:`2px solid ${t.surface}`,
-          }}/>
-        )}
-      </button>
-
-      {open && (
-        <div className="notif-in" style={{
-          position:'absolute', right:0, top:'calc(100% + 8px)', zIndex:60,
-          width:300, borderRadius:16, background:t.surface,
-          border:`1px solid ${t.border}`, boxShadow:`0 8px 32px rgba(0,0,0,0.4)`,
-          overflow:'hidden',
-        }}>
-          <div style={{ padding:'12px 16px', borderBottom:`1px solid ${t.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span className="tnr" style={{ fontSize:12, fontWeight:700, color:t.text }}>Notifications</span>
-            {unread > 0 && <span style={{ fontSize:10, fontWeight:700, padding:'2px 7px', borderRadius:20, background:t.accentGlow, color:t.accent }}>{unread} new</span>}
-          </div>
-
-          <div style={{ maxHeight:320, overflowY:'auto' }}>
-            {requests.length === 0 && unread === 0 && (
-              <p style={{ textAlign:'center', color:t.textMuted, fontSize:12, padding:'24px 0' }}>All caught up 🎮</p>
-            )}
-
-            {requests.map(req => (
-              <div key={req.id} style={{
-                padding:'12px 16px', borderBottom:`1px solid ${t.border}`,
-                display:'flex', alignItems:'center', gap:10,
-              }}>
-                <div style={{
-                  width:32, height:32, borderRadius:'50%', flexShrink:0,
-                  background:t.accentGlow, display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:13, fontWeight:700, color:t.accent,
-                }}>
-                  {req.requester?.username?.[0]?.toUpperCase() || '?'}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <p style={{ fontSize:12, fontWeight:600, color:t.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    <b>{req.requester?.username}</b> sent you a friend request
-                  </p>
-                  <div style={{ display:'flex', gap:6, marginTop:6 }}>
-                    <button onClick={() => acceptReq(req.id)} style={{
-                      fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6, cursor:'pointer',
-                      background:'#16a34a22', color:'#22c55e', border:'1px solid #22c55e44',
-                    }}>Accept</button>
-                    <button onClick={() => declineReq(req.id)} style={{
-                      fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:6, cursor:'pointer',
-                      background:t.card, color:t.textSub, border:`1px solid ${t.border}`,
-                    }}>Decline</button>
-                  </div>
-                </div>
-              </div>
-            ))}
-
-            {unread > requests.length && (
-              <div style={{ padding:'12px 16px', display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{
-                  width:32, height:32, borderRadius:'50%', flexShrink:0,
-                  background:'#3b82f618', display:'flex', alignItems:'center', justifyContent:'center',
-                }}>
-                  <Bell size={14} style={{ color:'#3b82f6' }}/>
-                </div>
-                <p style={{ fontSize:12, color:t.textSub }}>
-                  You have <b style={{ color:t.text }}>{unread - requests.length}</b> unread message{unread - requests.length > 1 ? 's' : ''}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
 
 // ─── GENRE PANEL ─────────────────────────────────────────────────────────────
 function useGenreGames(slug) {
@@ -918,7 +784,7 @@ export default function HomePage() {
         {/* ── Genre Panel ── */}
         {genrePanel&&<GenrePanel cat={genrePanel} onClose={()=>setGenrePanel(null)} t={t}/>}
 
-        {/* ── Top Controls (Search + Notifications) ── */}
+        {/* ── Top Controls (Search) ── */}
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           {/* Search */}
           <div ref={searchRef} style={{flex:1,position:'relative'}}>
@@ -957,9 +823,6 @@ export default function HomePage() {
                 onOpen={openTrailer} onClose={()=>setShowSearch(false)} t={t}/>
             )}
           </div>
-
-          {/* Notification Bell */}
-          <NotificationBell t={t}/>
         </div>
 
         {/* ── Hero Section ── */}

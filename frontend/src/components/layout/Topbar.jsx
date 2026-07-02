@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef, useId } from 'react'
+import { useState, useEffect, useRef, useId, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
-import { Sun, Moon, Menu } from 'lucide-react'
+import { XP_LABELS } from '../../utils/xpService'
+import { xpEventBus } from '../XPToast'
+import { Sun, Moon, Menu, Bell, Check, X } from 'lucide-react'
 
 // ── Glitch ticker — unchanged ──
 const FULL_TEXT = 'Welcome to THE VOID - DESIGNED AND DEVELOPED BY SUBHRANIL MANNA AND SIDDHARTHA DHAR'
@@ -237,6 +240,247 @@ function MiniVoidLogo({ dark }) {
   )
 }
 
+// ── Notification Bell — global, lives here so it shows on every page ──
+function NotificationBell({ dark }) {
+  const navigate = useNavigate()
+  const [open, setOpen]       = useState(false)
+  const [requests, setReqs]   = useState([])
+  const [feed, setFeed]       = useState([])
+  const [dmCount, setDmCount] = useState(0)
+  const [unread, setUnread]   = useState(0)
+  const [shaking, setShaking] = useState(false)
+  const [coords, setCoords]   = useState({ top: 0, right: 0 })
+  const btnRef   = useRef(null) // the bell button — used to measure position
+  const panelRef = useRef(null) // the portaled dropdown — used for outside-click detection
+
+  const bg      = dark ? '#0d0d20' : '#f5f3ff'
+  const border  = dark ? '#2a2a4a' : '#e2dcf5'
+  const surface = dark ? '#111124' : '#ffffff'
+  const text    = dark ? '#eae8ff' : '#1e1533'
+  const textSub = dark ? '#a5b4fc' : '#6d28d9'
+  const textMut = dark ? '#6b6890' : '#9b93b8'
+  const accent  = '#a855f7'
+
+  const authHeaders = { headers: { Authorization: `Bearer ${localStorage.getItem('gl_token')}` } }
+
+  const fetchNotifs = useCallback(async () => {
+    try {
+      const [reqRes, dmRes, feedRes, xpUnreadRes] = await Promise.all([
+        fetch('/api/friends/requests', authHeaders).then(r => r.ok ? r.json() : []),
+        fetch('/api/dm/unread-count',  authHeaders).then(r => r.ok ? r.json() : { count: 0 }),
+        fetch('/api/xp/notifications?limit=15', authHeaders).then(r => r.ok ? r.json() : []),
+        fetch('/api/xp/notifications/unread-count', authHeaders).then(r => r.ok ? r.json() : { unread: 0 }),
+      ])
+      setReqs(reqRes || [])
+      setDmCount(dmRes?.count || 0)
+      setFeed(feedRes || [])
+      const total = (reqRes?.length || 0) + (dmRes?.count || 0) + (xpUnreadRes?.unread || 0)
+      if (total > unread && unread !== null) { setShaking(true); setTimeout(() => setShaking(false), 600) }
+      setUnread(total)
+    } catch (e) {}
+  }, [unread])
+
+  useEffect(() => { fetchNotifs() }, [])
+  useEffect(() => { const id = setInterval(fetchNotifs, 12000); return () => clearInterval(id) }, [fetchNotifs])
+
+  // The moment XP is earned anywhere in the app (Home, Discover, News,
+  // Friends...) — same event the toast listens to — refresh the bell right
+  // away instead of waiting for the next poll tick.
+  useEffect(() => {
+    return xpEventBus.subscribe((event) => {
+      if (event.kind === 'xp' || event.kind === 'level_up') {
+        setTimeout(fetchNotifs, 300) // tiny delay so the backend write lands first
+      }
+    })
+  }, [fetchNotifs])
+
+  // Catch anything that happened while this tab was in the background
+  // (e.g. a friend accepted your request, or messaged you) the instant you
+  // switch back to it, instead of waiting out the rest of the poll interval.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchNotifs() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [fetchNotifs])
+
+  useEffect(() => {
+    if (!open) return
+    fetch('/api/xp/notifications/mark-read', { method: 'POST', ...authHeaders }).catch(() => {})
+  }, [open])
+
+  // Measure the bell's position when opening so the portaled dropdown can
+  // be placed under it with position:fixed (escaping the topbar's
+  // overflow:hidden, which was silently clipping it before).
+  const openDropdown = () => {
+    if (btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect()
+      setCoords({ top: rect.bottom + 8, right: window.innerWidth - rect.right })
+    }
+    setOpen(o => !o)
+  }
+
+  useEffect(() => {
+    const h = e => {
+      if (
+        btnRef.current && !btnRef.current.contains(e.target) &&
+        panelRef.current && !panelRef.current.contains(e.target)
+      ) setOpen(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const acceptReq = async (id) => {
+    try {
+      await fetch(`/api/friends/accept/${id}`, { method: 'POST', ...authHeaders })
+      setReqs(r => r.filter(x => x.id !== id))
+      setUnread(u => Math.max(0, u - 1))
+    } catch (e) {}
+  }
+  const declineReq = async (id) => {
+    try {
+      await fetch(`/api/friends/decline/${id}`, { method: 'DELETE', ...authHeaders })
+      setReqs(r => r.filter(x => x.id !== id))
+      setUnread(u => Math.max(0, u - 1))
+    } catch (e) {}
+  }
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        ref={btnRef}
+        onClick={openDropdown}
+        className={shaking ? 'bell-shake' : ''}
+        style={{
+          position: 'relative', width: 34, height: 34, borderRadius: 10,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: open ? `${accent}18` : 'transparent',
+          border: `1px solid ${open ? accent + '55' : border}`,
+          cursor: 'pointer', transition: 'all 0.2s',
+        }}
+      >
+        <Bell size={15} style={{ color: unread > 0 ? accent : textMut }} />
+        {unread > 0 && (
+          <span style={{
+            position: 'absolute', top: 5, right: 5, width: 7, height: 7,
+            borderRadius: '50%', background: '#ef4444',
+            border: `2px solid ${dark ? '#07070e' : '#faf8ff'}`,
+          }} />
+        )}
+      </button>
+
+      {open && createPortal(
+        <div
+          ref={panelRef}
+          style={{
+            position: 'fixed', top: coords.top, right: coords.right, zIndex: 999,
+            width: 300, borderRadius: 16, background: surface,
+            border: `1px solid ${border}`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+            overflow: 'hidden',
+          }}
+        >
+          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: text }}>Notifications</span>
+            {unread > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: `${accent}18`, color: accent }}>{unread} new</span>}
+          </div>
+
+          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+            {requests.length === 0 && dmCount === 0 && feed.length === 0 && (
+              <p style={{ textAlign: 'center', color: textMut, fontSize: 12, padding: '24px 0' }}>All caught up 🎮</p>
+            )}
+
+            {requests.map(req => (
+              <div
+                key={req.id}
+                onClick={() => { setOpen(false); navigate('/friends?tab=Requests') }}
+                style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+              >
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                  background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 700, color: accent,
+                }}>
+                  {req.requester?.username?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <b>{req.requester?.username}</b> sent you a friend request
+                  </p>
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }} onClick={e => e.stopPropagation()}>
+                    <button onClick={() => acceptReq(req.id)} style={{
+                      fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                      background: '#16a34a22', color: '#22c55e', border: '1px solid #22c55e44',
+                    }}><Check size={10} style={{ verticalAlign: -1 }} /> Accept</button>
+                    <button onClick={() => declineReq(req.id)} style={{
+                      fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                      background: bg, color: textSub, border: `1px solid ${border}`,
+                    }}><X size={10} style={{ verticalAlign: -1 }} /> Decline</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {dmCount > 0 && (
+              <div
+                onClick={() => { setOpen(false); navigate('/friends') }}
+                style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', borderBottom: feed.length ? `1px solid ${border}` : 'none' }}
+              >
+                <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: '#3b82f618', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Bell size={14} style={{ color: '#3b82f6' }} />
+                </div>
+                <p style={{ fontSize: 12, color: textSub }}>
+                  You have <b style={{ color: text }}>{dmCount}</b> unread message{dmCount > 1 ? 's' : ''}
+                </p>
+              </div>
+            )}
+
+            {feed.map((n, i) => (
+              <div
+                key={n.id}
+                onClick={() => { setOpen(false); if (n.type === 'friend_accepted' || n.action === 'made_friend') navigate('/friends') }}
+                style={{
+                  padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
+                  cursor: (n.type === 'friend_accepted' || n.action === 'made_friend') ? 'pointer' : 'default',
+                  borderBottom: i < feed.length - 1 ? `1px solid ${border}` : 'none',
+                }}
+              >
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                  background: n.type === 'level_up' ? '#f59e0b18' : n.type === 'friend_accepted' ? '#10b98118' : '#a855f718',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
+                }}>
+                  {n.type === 'level_up'
+                    ? '🎉'
+                    : n.type === 'friend_accepted'
+                      ? '🤝'
+                      : (XP_LABELS[n.action]?.icon || '⚡')}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12, color: n.read ? textSub : text, fontWeight: n.read ? 400 : 600 }}>
+                    {n.message}
+                  </p>
+                  {n.xp_earned > 0 && (
+                    <span style={{
+                      display: 'inline-block', marginTop: 3, fontSize: 10, fontWeight: 700,
+                      padding: '1px 7px', borderRadius: 8, background: `${accent}18`, color: accent,
+                      fontFamily: 'monospace',
+                    }}>+{n.xp_earned} XP</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
 const TOPBAR_STYLE = (dark) => `
   @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@700;900&display=swap');
 
@@ -338,6 +582,16 @@ const TOPBAR_STYLE = (dark) => `
     0%,100% { filter: drop-shadow(0 0 3px rgba(168,85,247,0.2)); }
     50%      { filter: drop-shadow(0 0 10px rgba(168,85,247,0.55)) drop-shadow(0 0 20px rgba(124,58,237,0.22)); }
   }
+
+  /* Notification bell shake */
+  @keyframes bellShake {
+    0%,100% { transform: rotate(0); }
+    20% { transform: rotate(-14deg); }
+    40% { transform: rotate(14deg); }
+    60% { transform: rotate(-8deg); }
+    80% { transform: rotate(8deg); }
+  }
+  .bell-shake { animation: bellShake 0.5s ease; }
 `
 
 export default function Topbar({ onMenuClick, dark = true, setDark = () => {} }) {
@@ -362,6 +616,7 @@ export default function Topbar({ onMenuClick, dark = true, setDark = () => {} })
         <div className="og-divider" />
 
         <div className="og-right">
+          <NotificationBell dark={dark} />
           <button className="og-theme-btn" onClick={() => setDark(d => !d)}>
             {dark ? <><Sun size={13} style={{ color: '#f59e0b' }} /> LIGHT</> : <><Moon size={13} style={{ color: '#7c3aed' }} /> DARK</>}
           </button>

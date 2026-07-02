@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   UserPlus, Check, X, MessageCircle, Shield,
   Search, Loader2, Users, Wifi, Bell, Ban, UserX
@@ -24,7 +25,12 @@ export default function FriendsPage() {
   // XP toast hook
   const { showFriendAccepted, showFriendRequest, showNewMessage } = useXPToast()
 
-  const [tab, setTab]                     = useState('Friends')
+  // Deep-link support: the Homepage notification bell links here with
+  // e.g. /friends?tab=Requests — honor that as the initial tab.
+  const [searchParams] = useSearchParams()
+  const initialTab = TABS.includes(searchParams.get('tab')) ? searchParams.get('tab') : 'Friends'
+
+  const [tab, setTab]                     = useState(initialTab)
   const [friends, setFriends]             = useState([])
   const [requests, setRequests]           = useState([])
   const [searchQ, setSearchQ]             = useState('')
@@ -33,6 +39,7 @@ export default function FriendsPage() {
   const [loading, setLoading]             = useState(true)
   const [searching, setSearching]         = useState(false)
   const [sending, setSending]             = useState({})
+  const [sentTo, setSentTo]               = useState(new Set()) // user ids we've sent a request to this session
   const [chatFriend, setChatFriend]       = useState(null)
 
   // ── theme tokens ──────────────────────────────────────────
@@ -43,6 +50,21 @@ export default function FriendsPage() {
   const txtPri    = isDark ? '#eae8ff'               : '#0f0f1f'
   const txtSec    = isDark ? '#8c8aaa'               : '#6b7280'
   const txtMut    = isDark ? '#504e6a'               : '#a0a0b0'
+
+  // ── responsive chat-open push ────────────────────────────
+  // DMChatPanel is only 384px wide at sm (>=640px) and up — below that it's
+  // full-width. Pushing the page by a fixed 384px regardless of viewport
+  // squeezes/distorts the tab bar and cards on narrower screens. Only push
+  // when there's actually room for a fixed 384px side panel.
+  const [isWideEnough, setIsWideEnough] = useState(
+    typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
+  )
+  useEffect(() => {
+    const onResize = () => setIsWideEnough(window.innerWidth >= 1024)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const chatPushPx = chatFriend && isWideEnough ? 384 : 0
 
   // ── helpers ───────────────────────────────────────────────
   const getPartner = (f) => (f.requester.id === user?.id ? f.addressee : f.requester)
@@ -81,9 +103,15 @@ export default function FriendsPage() {
       setSending(s => ({ ...s, [userId]: true }))
       await axios.post(`/api/friends/request/${userId}`)
       toast.success('Friend request sent!')
-      setSearchResults(r => r.filter(u => u.id !== userId))
+      setSentTo(s => new Set(s).add(userId))
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Could not send request')
+      // Backend already has a pending/duplicate request — treat it the same
+      // as success from a UI standpoint rather than showing a scary error
+      if (err.response?.status === 400 && /already exists/i.test(err.response?.data?.detail || '')) {
+        setSentTo(s => new Set(s).add(userId))
+      } else {
+        toast.error(err.response?.data?.detail || 'Could not send request')
+      }
     } finally { setSending(s => ({ ...s, [userId]: false })) }
   }
 
@@ -326,7 +354,7 @@ export default function FriendsPage() {
         style={{
           display: 'flex', flexDirection: 'column', gap: 22,
           padding: '28px 32px',
-          marginRight: chatFriend ? 384 : 0,
+          marginRight: chatPushPx,
           transition: 'margin-right 0.3s',
           minHeight: '100%',
         }}
@@ -493,26 +521,33 @@ export default function FriendsPage() {
               </p>
             )}
 
-            {searchResults.map(u => (
-              <PersonRow key={u.id} person={u} actions={
-                <button
-                  onClick={() => sendRequest(u.id)}
-                  disabled={sending[u.id]}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '8px 16px', borderRadius: 10, border: 'none',
-                    background: `linear-gradient(135deg, ${ACCENT.primary}, #8b5cf6)`,
-                    color: '#fff', fontSize: 13, fontWeight: 700,
-                    cursor: sending[u.id] ? 'not-allowed' : 'pointer',
-                    opacity: sending[u.id] ? 0.6 : 1, transition: 'opacity 0.15s',
-                  }}
-                >
-                  {sending[u.id]
-                    ? <><Loader2 size={13} className="animate-spin" /> Sending…</>
-                    : <><UserPlus size={13} /> Add</>}
-                </button>
-              } />
-            ))}
+            {searchResults.map(u => {
+              const requested = sentTo.has(u.id)
+              return (
+                <PersonRow key={u.id} person={u} actions={
+                  <button
+                    onClick={() => !requested && sendRequest(u.id)}
+                    disabled={sending[u.id] || requested}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '8px 16px', borderRadius: 10, border: 'none',
+                      background: requested
+                        ? (isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6')
+                        : `linear-gradient(135deg, ${ACCENT.primary}, #8b5cf6)`,
+                      color: requested ? txtSec : '#fff', fontSize: 13, fontWeight: 700,
+                      cursor: (sending[u.id] || requested) ? 'not-allowed' : 'pointer',
+                      opacity: sending[u.id] ? 0.6 : 1, transition: 'opacity 0.15s',
+                    }}
+                  >
+                    {sending[u.id]
+                      ? <><Loader2 size={13} className="animate-spin" /> Sending…</>
+                      : requested
+                        ? <><Check size={13} /> Requested</>
+                        : <><UserPlus size={13} /> Add</>}
+                  </button>
+                } />
+              )
+            })}
 
             {!searchQ && (
               <div style={{ textAlign: 'center', padding: '64px 0' }}>

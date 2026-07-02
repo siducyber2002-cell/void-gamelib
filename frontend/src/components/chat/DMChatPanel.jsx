@@ -82,8 +82,13 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
   const bottomRef   = useRef(null)
   const inputRef    = useRef(null)
   const typingTimer = useRef(null)
+  const reconnectTimer = useRef(null)
+  const reconnectAttempt = useRef(0)
   // Track if panel is minimized in a ref so the ws handler can read it
   const minimizedRef = useRef(false)
+  // Track our own in-flight optimistic messages so we can reconcile the
+  // server echo instead of rendering it as a duplicate bubble
+  const pendingOptimistic = useRef([])
 
   const roomId = getRoomId(user?.id, friend?.id)
   const token  = localStorage.getItem('gl_token')
@@ -115,6 +120,8 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
       setLoading(true)
       const res = await axios.get(`/api/dm/history/${friend.id}`)
       setMessages(res.data)
+      // Opening the panel means we've now read everything up to this point
+      axios.post(`/api/dm/read/${friend.id}`).catch(() => {})
     } catch {
       setMessages([])
     } finally {
@@ -122,52 +129,97 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
     }
   }, [friend.id])
 
-  // ── Connect WebSocket ─────────────────────────────────────
+  // ── Connect WebSocket (with auto-reconnect) ────────────────
   useEffect(() => {
     loadHistory()
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/dm/ws/dm/${roomId}?token=${token}`)
-    wsRef.current = ws
+    const connect = () => {
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/dm/ws/dm/${roomId}?token=${token}`)
+      wsRef.current = ws
 
-    ws.onopen = () => setWsReady(true)
+      ws.onopen = () => {
+        setWsReady(true)
+        reconnectAttempt.current = 0
+      }
 
-    ws.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data)
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data)
 
-        if (data.type === 'typing') {
-          if (data.user_id !== user?.id) {
-            setIsTyping(true)
-            clearTimeout(typingTimer.current)
-            typingTimer.current = setTimeout(() => setIsTyping(false), 2000)
+          if (data.type === 'typing') {
+            if (data.user_id !== user?.id) {
+              setIsTyping(true)
+              clearTimeout(typingTimer.current)
+              typingTimer.current = setTimeout(() => setIsTyping(false), 2000)
+            }
+            return
           }
-          return
-        }
 
-        if (data.type === 'message') {
-          setMessages(prev => {
-            if (prev.find(m => m.id === data.id)) return prev
-            return [...prev, data]
-          })
+          if (data.type === 'message') {
+            setMessages(prev => {
+              if (prev.find(m => m.id === data.id)) return prev
 
-          // If the message is from the friend (not self), fire the notification callback
-          if (data.sender_id !== user?.id) {
-            // Only notify if panel is minimized — if open and visible, user sees it directly
-            if (minimizedRef.current) {
-              onNewMessage?.(friend.username)
+              // If this is the server echo of a message WE just sent,
+              // replace the optimistic placeholder instead of adding a
+              // second, duplicate bubble.
+              if (data.sender_id === user?.id && pendingOptimistic.current.length) {
+                const optIndex = prev.findIndex(m =>
+                  m.optimistic && pendingOptimistic.current.includes(m.id) && m.content === data.content
+                )
+                if (optIndex !== -1) {
+                  pendingOptimistic.current = pendingOptimistic.current.filter(id => id !== prev[optIndex].id)
+                  const next = [...prev]
+                  next[optIndex] = data
+                  return next
+                }
+              }
+
+              return [...prev, data]
+            })
+
+            // If the message is from the friend (not self), fire the notification callback
+            if (data.sender_id !== user?.id) {
+              // Only notify if panel is minimized — if open and visible, user sees it directly
+              if (minimizedRef.current) {
+                onNewMessage?.(friend.username)
+              } else {
+                // Visible and reading it live — mark read right away
+                axios.post(`/api/dm/read/${friend.id}`).catch(() => {})
+              }
             }
           }
-        }
-      } catch {}
+        } catch {}
+      }
+
+      ws.onclose = () => {
+        setWsReady(false)
+        wsRef.current = null
+        // Auto-reconnect with capped exponential backoff, so a dropped
+        // connection doesn't silently kill live updates until the panel
+        // is closed and reopened.
+        const attempt = reconnectAttempt.current + 1
+        reconnectAttempt.current = attempt
+        const delay = Math.min(1000 * 2 ** (attempt - 1), 10000)
+        clearTimeout(reconnectTimer.current)
+        reconnectTimer.current = setTimeout(connect, delay)
+      }
+
+      ws.onerror = () => {
+        setWsReady(false)
+        ws.close()
+      }
     }
 
-    ws.onclose = () => setWsReady(false)
-    ws.onerror = () => setWsReady(false)
+    connect()
 
     return () => {
-      ws.close()
+      clearTimeout(reconnectTimer.current)
       clearTimeout(typingTimer.current)
+      if (wsRef.current) {
+        wsRef.current.onclose = null // don't trigger reconnect on unmount
+        wsRef.current.close()
+      }
     }
   }, [roomId, token])
 
@@ -181,8 +233,11 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
   }, [messages, isTyping])
 
   useEffect(() => {
-    if (!minimized) setTimeout(() => inputRef.current?.focus(), 100)
-  }, [minimized])
+    if (!minimized) {
+      setTimeout(() => inputRef.current?.focus(), 100)
+      axios.post(`/api/dm/read/${friend.id}`).catch(() => {})
+    }
+  }, [minimized, friend.id])
 
   const sendMessage = () => {
     const text = input.trim()
@@ -197,13 +252,17 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
       optimistic: true,
     }
     setMessages(prev => [...prev, optimistic])
+    pendingOptimistic.current.push(optimistic.id)
     setInput('')
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'message', content: text }))
     } else {
       axios.post('/api/dm/send', { receiver_id: friend.id, content: text })
-        .catch(() => setMessages(prev => prev.filter(m => m.id !== optimistic.id)))
+        .catch(() => {
+          setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+          pendingOptimistic.current = pendingOptimistic.current.filter(id => id !== optimistic.id)
+        })
     }
   }
 
