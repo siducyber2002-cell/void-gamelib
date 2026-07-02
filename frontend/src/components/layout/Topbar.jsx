@@ -247,6 +247,7 @@ function NotificationBell({ dark }) {
   const [requests, setReqs]   = useState([])
   const [feed, setFeed]       = useState([])
   const [dmCount, setDmCount] = useState(0)
+  const [dmSenders, setDmSenders] = useState([]) // [{id, username, avatar_url, count, last_message}]
   const [unread, setUnread]   = useState(0)
   const [shaking, setShaking] = useState(false)
   const [coords, setCoords]   = useState({ top: 0, right: 0 })
@@ -270,12 +271,13 @@ function NotificationBell({ dark }) {
     try {
       const [reqRes, dmRes, feedRes, xpUnreadRes] = await Promise.all([
         fetch('/api/friends/requests', authHeaders).then(r => r.ok ? r.json() : []),
-        fetch('/api/dm/unread-count',  authHeaders).then(r => r.ok ? r.json() : { count: 0 }),
+        fetch('/api/dm/unread-count',  authHeaders).then(r => r.ok ? r.json() : { count: 0, senders: [] }),
         fetch('/api/xp/notifications?limit=15', authHeaders).then(r => r.ok ? r.json() : []),
         fetch('/api/xp/notifications/unread-count', authHeaders).then(r => r.ok ? r.json() : { unread: 0 }),
       ])
       setReqs(reqRes || [])
       setDmCount(dmRes?.count || 0)
+      setDmSenders(dmRes?.senders || [])
       setFeed(feedRes || [])
       const total = (reqRes?.length || 0) + (dmRes?.count || 0) + (xpUnreadRes?.unread || 0)
       if (total > unread && unread !== null) { setShaking(true); setTimeout(() => setShaking(false), 600) }
@@ -427,19 +429,36 @@ function NotificationBell({ dark }) {
               </div>
             ))}
 
-            {dmCount > 0 && (
+            {dmSenders.map((s, i) => (
               <div
-                onClick={() => { setOpen(false); navigate('/friends') }}
-                style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', borderBottom: feed.length ? `1px solid ${border}` : 'none' }}
+                key={s.id}
+                onClick={() => { setOpen(false); navigate(`/friends?tab=Friends&dm=${s.id}`) }}
+                style={{
+                  padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+                  borderBottom: (i < dmSenders.length - 1 || feed.length) ? `1px solid ${border}` : 'none',
+                }}
               >
-                <div style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, background: '#3b82f618', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Bell size={14} style={{ color: '#3b82f6' }} />
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
+                  background: '#3b82f618', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: 700, color: '#3b82f6',
+                }}>
+                  {s.avatar_url
+                    ? <img src={s.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : (s.username?.[0]?.toUpperCase() || '?')}
                 </div>
-                <p style={{ fontSize: 12, color: textSub }}>
-                  You have <b style={{ color: text }}>{dmCount}</b> unread message{dmCount > 1 ? 's' : ''}
-                </p>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <b>{s.username || 'Someone'}</b> sent you {s.count > 1 ? `${s.count} messages` : 'a message'}
+                  </p>
+                  {s.last_message && (
+                    <p style={{ fontSize: 11, color: textMut, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
+                      {s.last_message}
+                    </p>
+                  )}
+                </div>
               </div>
-            )}
+            ))}
 
             {feed.map((n, i) => (
               <div

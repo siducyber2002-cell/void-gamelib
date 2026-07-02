@@ -1,8 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Send, Minimize2, Maximize2, Circle, Loader2 } from 'lucide-react'
+import { X, Send, Minimize2, Maximize2, Circle, Loader2, Smile } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import axios from 'axios'
+
+// Compact, curated emoji set — enough variety for casual chat without
+// pulling in an emoji-picker dependency.
+const EMOJI_GROUPS = {
+  Smileys: ['😀','😂','🤣','😅','😊','😍','🥰','😘','😉','😎','🤔','🙄','😴','😭','😢','😡','🤯','🥳','😱','🫡'],
+  Gestures: ['👍','👎','👏','🙌','🙏','💪','🤝','👋','✌️','🤞','👌','🫶'],
+  Gaming: ['🎮','🕹️','🏆','🔥','⚡','💯','🎯','🚀','⭐','💀','🎉','🥇'],
+  Hearts: ['❤️','🧡','💛','💚','💙','💜','🖤','🤍','💔','💖'],
+}
 
 function getRoomId(userId1, userId2) {
   return [userId1, userId2].sort((a, b) => a - b).join('_')
@@ -77,6 +86,8 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
   const [minimized, setMinimized] = useState(false)
   const [wsReady, setWsReady]     = useState(false)
   const [isTyping, setIsTyping]   = useState(false)
+  const [showEmoji, setShowEmoji] = useState(false)
+  const [emojiTab, setEmojiTab]   = useState('Smileys')
 
   const wsRef       = useRef(null)
   const bottomRef   = useRef(null)
@@ -84,6 +95,8 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
   const typingTimer = useRef(null)
   const reconnectTimer = useRef(null)
   const reconnectAttempt = useRef(0)
+  const emojiPickerRef = useRef(null)
+  const emojiBtnRef     = useRef(null)
   // Track if panel is minimized in a ref so the ws handler can read it
   const minimizedRef = useRef(false)
   // Track our own in-flight optimistic messages so we can reconcile the
@@ -134,12 +147,27 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
     loadHistory()
 
     const connect = () => {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/dm/ws/dm/${roomId}?token=${token}`)
+      // Build the WS URL from the *same* backend origin axios already uses
+      // (AuthContext sets axios.defaults.baseURL = VITE_API_URL). Using
+      // window.location.host here was the actual bug in production: the
+      // frontend (static site) and backend (web service) live on two
+      // different Render domains, so that always resolved to a host with
+      // no /api/dm/ws route at all, and the socket could never open —
+      // every message silently fell back to REST until the panel was
+      // reopened. Deriving from VITE_API_URL instead means we always talk
+      // directly to the backend, regardless of what's proxying (or not
+      // proxying) the frontend.
+      const apiBase = (import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, '')
+      const wsBase  = apiBase.replace(/^http/, 'ws') // http:// → ws://, https:// → wss://
+      const ws = new WebSocket(`${wsBase}/api/dm/ws/dm/${roomId}?token=${token}`)
       wsRef.current = ws
 
       ws.onopen = () => {
         setWsReady(true)
+        // If this is a *reconnect* (not the first connect), re-fetch
+        // history — any message that arrived while we were dropped would
+        // otherwise sit unseen until the panel was closed and reopened.
+        if (reconnectAttempt.current > 0) loadHistory()
         reconnectAttempt.current = 0
       }
 
@@ -263,6 +291,36 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
           setMessages(prev => prev.filter(m => m.id !== optimistic.id))
           pendingOptimistic.current = pendingOptimistic.current.filter(id => id !== optimistic.id)
         })
+    }
+  }
+
+  // Close the emoji popup on outside click
+  useEffect(() => {
+    if (!showEmoji) return
+    const h = (e) => {
+      if (
+        emojiPickerRef.current && !emojiPickerRef.current.contains(e.target) &&
+        emojiBtnRef.current && !emojiBtnRef.current.contains(e.target)
+      ) setShowEmoji(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [showEmoji])
+
+  const insertEmoji = (emoji) => {
+    const el = inputRef.current
+    if (el && typeof el.selectionStart === 'number') {
+      const start = el.selectionStart
+      const end = el.selectionEnd
+      setInput(prev => prev.slice(0, start) + emoji + prev.slice(end))
+      // restore cursor right after the inserted emoji next tick
+      requestAnimationFrame(() => {
+        el.focus()
+        el.selectionStart = el.selectionEnd = start + emoji.length
+      })
+    } else {
+      setInput(prev => prev + emoji)
+      inputRef.current?.focus()
     }
   }
 
@@ -429,9 +487,55 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
 
             {/* Input */}
             <div
-              className="px-4 py-3 flex-shrink-0 flex items-end gap-2"
+              className="relative px-4 py-3 flex-shrink-0 flex items-end gap-2"
               style={{ borderTop: `1px solid ${borderColor}`, background: inputAreaBg }}
             >
+              {showEmoji && (
+                <div
+                  ref={emojiPickerRef}
+                  className="absolute bottom-full left-4 mb-2 rounded-2xl shadow-2xl overflow-hidden z-10"
+                  style={{ width: 264, background: panelBg, border: `1px solid ${borderColor}` }}
+                >
+                  <div className="flex" style={{ borderBottom: `1px solid ${borderColor}` }}>
+                    {Object.keys(EMOJI_GROUPS).map(group => (
+                      <button
+                        key={group}
+                        onClick={() => setEmojiTab(group)}
+                        className="flex-1 py-2 text-xs font-semibold transition-colors"
+                        style={{
+                          color: emojiTab === group ? accentColors.primary : (isDark ? '#6b7280' : '#94a3b8'),
+                          background: emojiTab === group ? `${accentColors.primary}14` : 'transparent',
+                          borderBottom: emojiTab === group ? `2px solid ${accentColors.primary}` : '2px solid transparent',
+                        }}
+                      >
+                        {group}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-6 gap-1 p-2.5 max-h-40 overflow-y-auto">
+                    {EMOJI_GROUPS[emojiTab].map(emoji => (
+                      <button
+                        key={emoji}
+                        onClick={() => insertEmoji(emoji)}
+                        className={`text-xl leading-none w-9 h-9 rounded-lg flex items-center justify-center transition-transform hover:scale-125 ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                ref={emojiBtnRef}
+                onClick={() => setShowEmoji(s => !s)}
+                title="Emoji"
+                className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-colors flex-shrink-0 ${minimizeBtnHover}`}
+                style={{ color: showEmoji ? accentColors.primary : (isDark ? '#9ca3af' : '#94a3b8') }}
+              >
+                <Smile size={19} />
+              </button>
+
               <textarea
                 ref={inputRef}
                 value={input}

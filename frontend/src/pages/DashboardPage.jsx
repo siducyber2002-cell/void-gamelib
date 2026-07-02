@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Gamepad2, Users, CheckCircle, PlayCircle,
-  Bookmark, Heart, TrendingUp, Activity, Plus, UserPlus
+  Bookmark, Heart, TrendingUp, Activity, Plus, UserPlus, LayoutDashboard, Flame
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
@@ -21,13 +21,97 @@ const STATUS_COLORS = {
 
 function timeAgo(dateStr) {
   if (!dateStr) return '—'
-  const diff = Date.now() - new Date(dateStr).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1)  return 'just now'
+
+  let then = new Date(dateStr)
+
+  // Many backends serialize UTC timestamps without a trailing 'Z' or offset
+  // (e.g. Python's datetime.utcnow()). JS then silently parses that string as
+  // *local* time instead of UTC, throwing the whole diff off by your timezone
+  // offset — this is almost always what produces "garbage" values. Detect a
+  // plain, offset-less ISO string and correct it.
+  if (typeof dateStr === 'string' && !/Z$|[+-]\d{2}:?\d{2}$/.test(dateStr.trim())) {
+    then = new Date(dateStr.trim() + 'Z')
+  }
+
+  if (isNaN(then.getTime())) return '—'
+
+  const diffSec = Math.floor((Date.now() - then.getTime()) / 1000)
+
+  // Small negative values just mean minor clock skew between client/server —
+  // treat as "just now" instead of showing a negative/garbage number.
+  if (diffSec < 5)   return 'just now'
+  if (diffSec < 60)  return `${diffSec}s ago`
+
+  const mins = Math.floor(diffSec / 60)
   if (mins < 60) return `${mins}m ago`
+
   const hrs = Math.floor(mins / 60)
-  if (hrs < 24)  return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
+  if (hrs < 24) return `${hrs}h ago`
+
+  const days = Math.floor(hrs / 24)
+  if (days < 30) return `${days}d ago`
+
+  const months = Math.floor(days / 30)
+  if (months < 12) return `${months}mo ago`
+
+  return `${Math.floor(months / 12)}y ago`
+}
+
+// ── Daily login streak ──────────────────────────────────────────────────────
+// Tracked client-side per user (no backend change needed): counts the app as
+// "visited" once per calendar day. If yesterday was visited too, the streak
+// continues; otherwise it resets to 1. Longest streak + full visit history
+// (for the calendar view) are remembered alongside.
+function localDateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function useLoginStreak(userId) {
+  const [streak, setStreak]   = useState(0)
+  const [longest, setLongest] = useState(0)
+  const [history, setHistory] = useState([]) // array of 'YYYY-MM-DD' visited days
+
+  useEffect(() => {
+    if (!userId) return
+    const key = `gl_streak_${userId}`
+    const today = new Date()
+    const todayKey = localDateKey(today)
+
+    let saved = null
+    try { saved = JSON.parse(localStorage.getItem(key)) } catch { /* ignore */ }
+
+    if (!saved) {
+      const fresh = { lastLogin: todayKey, streak: 1, longest: 1, history: [todayKey] }
+      localStorage.setItem(key, JSON.stringify(fresh))
+      setStreak(1); setLongest(1); setHistory(fresh.history)
+      return
+    }
+
+    const savedHistory = Array.isArray(saved.history) ? saved.history : []
+
+    if (saved.lastLogin === todayKey) {
+      setStreak(saved.streak || 1)
+      setLongest(saved.longest || saved.streak || 1)
+      setHistory(savedHistory)
+      return
+    }
+
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const isConsecutive = saved.lastLogin === localDateKey(yesterday)
+
+    const newStreak  = isConsecutive ? (saved.streak || 0) + 1 : 1
+    const newLongest = Math.max(saved.longest || 0, newStreak)
+    // Cap history so localStorage doesn't grow unbounded over months of use
+    const newHistory = [...new Set([...savedHistory, todayKey])].slice(-120)
+
+    localStorage.setItem(key, JSON.stringify({ lastLogin: todayKey, streak: newStreak, longest: newLongest, history: newHistory }))
+    setStreak(newStreak)
+    setLongest(newLongest)
+    setHistory(newHistory)
+  }, [userId])
+
+  return { streak, longest, history }
 }
 
 function useCountUp(target, duration = 900) {
@@ -599,6 +683,98 @@ function StatCard({ label, value, icon: Icon, color, delay = 0, isDark }) {
   )
 }
 
+// Daily login streak badge
+function StreakBadge({ streak, longest, isDark }) {
+  const bg     = isDark ? 'rgba(249,115,22,0.12)' : 'rgba(249,115,22,0.08)'
+  const border = isDark ? 'rgba(249,115,22,0.35)' : 'rgba(249,115,22,0.25)'
+  const sub    = isDark ? '#b0a89c' : '#78716c'
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 12,
+      background: bg, border: `1px solid ${border}`,
+      borderRadius: 16, padding: '10px 18px', flexShrink: 0,
+    }}>
+      <span className="dash-flame-pulse" style={{ fontSize: 24, lineHeight: 1 }}>
+        <Flame size={24} style={{ color: '#f97316' }} fill="#f97316" fillOpacity={0.25} />
+      </span>
+      <div>
+        <p style={{ fontSize: 17, fontWeight: 900, color: '#f97316', lineHeight: 1, marginBottom: 3 }}>
+          {streak} day{streak !== 1 ? 's' : ''}
+        </p>
+        <p style={{ fontSize: 10, color: sub, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          Streak · Best {longest}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// Month calendar heatmap for the login streak — visited days get a glowing
+// filled cell, today gets a ring, styled after the reference screenshot but
+// in VOID's purple palette instead of the reference's orange.
+function StreakCalendar({ history, isDark, textPrimary, textSub }) {
+  const today = new Date()
+  const year  = today.getFullYear()
+  const month = today.getMonth()
+
+  const firstOfMonth = new Date(year, month, 1)
+  const startOffset  = (firstOfMonth.getDay() + 6) % 7 // Monday-first
+  const daysInMonth  = new Date(year, month + 1, 0).getDate()
+
+  const cells = []
+  for (let i = 0; i < startOffset; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+
+  const historySet = new Set(history)
+  const todayKey    = localDateKey(today)
+  const monthLabel  = today.toLocaleDateString('en', { month: 'long', year: 'numeric' })
+  const weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+
+  const cellBg     = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.035)'
+  const cellText   = textSub
+
+  return (
+    <div>
+      <p style={{ fontSize: 11.5, fontWeight: 700, color: textSub, marginBottom: 12 }}>{monthLabel}</p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: 4, marginBottom: 6, justifyContent: 'center' }}>
+        {weekdayLabels.map((w, i) => (
+          <div key={i} style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 800, color: textSub, letterSpacing: '0.02em' }}>
+            {w}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gridAutoRows: '26px', gap: 4, justifyContent: 'center' }}>
+        {cells.map((d, i) => {
+          if (d === null) return <div key={i} />
+          const key      = localDateKey(new Date(year, month, d))
+          const active   = historySet.has(key)
+          const isToday  = key === todayKey
+          return (
+            <div
+              key={i}
+              style={{
+                width: 26, height: 26, borderRadius: 7,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10.5, fontWeight: 800, position: 'relative',
+                background: active ? `linear-gradient(135deg, ${ACCENT}, ${ACCENT2})` : cellBg,
+                color: active ? '#fff' : cellText,
+                boxShadow: active ? `0 0 12px ${ACCENT}55` : 'none',
+                border: isToday ? `1.5px solid ${ACCENT}` : '1.5px solid transparent',
+                transition: 'transform 0.15s ease',
+              }}
+            >
+              {d}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -610,6 +786,16 @@ export default function DashboardPage() {
   const [recentActivity, setActivity]  = useState([])
   const [frLoading,      setFrLoading] = useState(true)
   const [lineData,       setLineData]  = useState([])
+
+  const { streak, longest, history } = useLoginStreak(user?.id)
+
+  // Forces a re-render every few seconds so "Xs ago" / "Xm ago" labels stay
+  // live without needing to refetch any data.
+  const [, forceTick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => forceTick(t => t + 1), 5000)
+    return () => clearInterval(id)
+  }, [])
 
   // Derived stats
   const total     = library.length
@@ -650,7 +836,7 @@ export default function DashboardPage() {
               type:   'friend',
               action: 'New friend added',
               detail: friendUser?.username || 'Someone',
-              time:   timeAgo(f.created_at),
+              at:     f.created_at,
               emoji:  '👥',
             }
           })
@@ -668,7 +854,7 @@ export default function DashboardPage() {
               type:   'game',
               action,
               detail: g.title || 'Unknown',
-              time:   timeAgo(g.added_at),
+              at:     g.added_at,
               emoji,
             }
           })
@@ -739,6 +925,11 @@ export default function DashboardPage() {
           from { transform: translateX(0); }
           to   { transform: translateX(-43px); }
         }
+        @keyframes dashFlamePulse {
+          0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(249,115,22,0.5)); }
+          50%      { transform: scale(1.1); filter: drop-shadow(0 0 8px rgba(249,115,22,0.85)); }
+        }
+        .dash-flame-pulse      { display: inline-flex; animation: dashFlamePulse 1.8s ease-in-out infinite; }
         .dash-wave-scroll      { animation: dashWaveScroll 2.6s linear infinite; }
         .dash-wave-scroll-slow { animation: dashWaveScroll 4s linear infinite reverse; }
         .dash-ring-pulse       { animation: dashPulseRing 2.4s ease-out infinite; }
@@ -749,16 +940,35 @@ export default function DashboardPage() {
       `}</style>
 
       {/* ── Header ── */}
-      <div style={{ marginBottom: 28 }}>
-        <p style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.2em', color: ACCENT, textTransform: 'uppercase', marginBottom: 4 }}>
-          Overview
-        </p>
-        <h1 style={{ fontSize: 34, fontWeight: 900, color: textPrimary, lineHeight: 1, marginBottom: 6 }}>
-          Dashboard
-        </h1>
-        <p style={{ fontSize: 13, color: textSub }}>
-          Hey {user?.username || 'Gamer'} — here's what's going on
-        </p>
+      <div style={{ marginBottom: 28, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <div style={{
+              width: 42, height: 42, borderRadius: 13, flexShrink: 0,
+              background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT2})`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: `0 4px 16px ${ACCENT}55`,
+            }}>
+              <LayoutDashboard size={21} color="#fff" strokeWidth={2.2} />
+            </div>
+            <div>
+              <p style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.2em', color: ACCENT, textTransform: 'uppercase', marginBottom: 2 }}>
+                Overview
+              </p>
+              <h1 style={{ fontSize: 34, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>
+                Dashboard
+              </h1>
+            </div>
+          </div>
+          <p style={{ fontSize: 13, color: textSub, marginBottom: 4 }}>
+            Hey {user?.username || 'Gamer'} — here's what's going on
+          </p>
+          <p style={{ fontSize: 12.5, color: textSub, opacity: 0.8, fontStyle: 'italic' }}>
+            Every game logged, every friend added — this is your journey, tracked.
+          </p>
+        </div>
+
+        <StreakBadge streak={streak} longest={longest} isDark={isDark} />
       </div>
 
       {/* ── Stat cards ── */}
@@ -766,6 +976,41 @@ export default function DashboardPage() {
         <StatCard label="Total Games" value={gamesCount}     icon={Gamepad2}    color={ACCENT}     delay={0}   isDark={isDark} />
         <StatCard label="Friends"     value={frLoading ? '…' : friendsCount} icon={Users} color="#10b981" delay={80}  isDark={isDark} />
         <StatCard label="Completed"   value={completedCount} icon={CheckCircle} color="#8b5cf6"    delay={160} isDark={isDark} />
+      </div>
+
+      {/* ── Login Streak ── */}
+      <div style={{ ...cardStyle, padding: '24px 26px', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
+          <div>
+            <p style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.15em', color: ACCENT, textTransform: 'uppercase', marginBottom: 4 }}>Consistency</p>
+            <h2 style={{ fontSize: 16, fontWeight: 800, color: textPrimary, marginBottom: 2 }}>Login Streak</h2>
+            <p style={{ fontSize: 12, color: textSub }}>Keep the flame alive</p>
+          </div>
+          <Flame size={18} style={{ color: '#f97316' }} />
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+          <div style={{
+            borderRadius: 12, padding: '10px 14px', flex: 1,
+            background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.28)',
+          }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', color: '#f97316', textTransform: 'uppercase', marginBottom: 4 }}>Current</p>
+            <p style={{ fontSize: 18, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>
+              {streak} <span style={{ fontSize: 11, fontWeight: 700, color: textSub }}>day{streak !== 1 ? 's' : ''}</span>
+            </p>
+          </div>
+          <div style={{
+            borderRadius: 12, padding: '10px 14px', flex: 1,
+            background: ACCENT + '12', border: `1px solid ${ACCENT}30`,
+          }}>
+            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', color: ACCENT, textTransform: 'uppercase', marginBottom: 4 }}>Best</p>
+            <p style={{ fontSize: 18, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>
+              {longest} <span style={{ fontSize: 11, fontWeight: 700, color: textSub }}>day{longest !== 1 ? 's' : ''}</span>
+            </p>
+          </div>
+        </div>
+
+        <StreakCalendar history={history} isDark={isDark} textPrimary={textPrimary} textSub={textSub} />
       </div>
 
       {/* ── Row 2: Breakdown + Progress ── */}
@@ -895,7 +1140,7 @@ export default function DashboardPage() {
                   }}>
                     {act.type === 'friend' ? 'Friend' : 'Game'}
                   </span>
-                  <span style={{ fontSize: 11, color: textSub }}>{act.time}</span>
+                  <span style={{ fontSize: 11, color: textSub }}>{timeAgo(act.at)}</span>
                 </div>
               </div>
             ))}

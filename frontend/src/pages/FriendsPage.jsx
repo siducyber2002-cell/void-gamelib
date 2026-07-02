@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   UserPlus, Check, X, MessageCircle, Shield,
@@ -83,6 +83,24 @@ export default function FriendsPage() {
     finally   { setLoading(false) }
   }, [])
   useEffect(() => { loadFriends() }, [loadFriends])
+
+  // ── deep-link: notification bell → /friends?tab=Friends&dm=<friendId> ──
+  // Auto-open that friend's DM panel once friends have loaded. Guarded by a
+  // ref so it only fires once per page load — if the user closes the panel
+  // themselves afterward, it shouldn't keep popping back open.
+  const autoOpenedDM = useRef(false)
+  useEffect(() => {
+    if (autoOpenedDM.current || loading) return
+    const dmParam = searchParams.get('dm')
+    if (!dmParam) return
+    const match = friends
+      .map(f => getPartner(f))
+      .find(f => String(f.id) === dmParam)
+    if (match) {
+      setChatFriend(match)
+      autoOpenedDM.current = true
+    }
+  }, [searchParams, loading, friends])
 
   useEffect(() => {
     if (!searchQ.trim()) { setSearchResults([]); return }
