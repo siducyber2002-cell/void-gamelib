@@ -250,7 +250,7 @@ function NotificationBell({ dark }) {
   const [dmSenders, setDmSenders] = useState([]) // [{id, username, avatar_url, count, last_message}]
   const [unread, setUnread]   = useState(0)
   const [shaking, setShaking] = useState(false)
-  const [coords, setCoords]   = useState({ top: 0, right: 0 })
+  const [coords, setCoords]   = useState({ top: 0, right: 0, width: 300 })
   const btnRef   = useRef(null) // the bell button — used to measure position
   const panelRef = useRef(null) // the portaled dropdown — used for outside-click detection
 
@@ -323,7 +323,15 @@ function NotificationBell({ dark }) {
   const openDropdown = () => {
     if (btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect()
-      setCoords({ top: rect.bottom + 8, right: window.innerWidth - rect.right })
+      const margin = 12
+      const width = Math.min(300, window.innerWidth - margin * 2)
+      // Anchor to the bell's right edge, but never let the panel's left
+      // edge go past `margin` from the screen edge (was overflowing off
+      // narrow mobile viewports before).
+      const idealRight = window.innerWidth - rect.right
+      const maxRight = window.innerWidth - width - margin
+      const right = Math.max(margin, Math.min(idealRight, maxRight))
+      setCoords({ top: rect.bottom + 8, right, width })
     }
     setOpen(o => !o)
   }
@@ -383,7 +391,7 @@ function NotificationBell({ dark }) {
           ref={panelRef}
           style={{
             position: 'fixed', top: coords.top, right: coords.right, zIndex: 999,
-            width: 300, borderRadius: 16, background: surface,
+            width: coords.width, maxWidth: 'calc(100vw - 24px)', borderRadius: 16, background: surface,
             border: `1px solid ${border}`, boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
             overflow: 'hidden',
           }}
@@ -605,6 +613,18 @@ const TOPBAR_STYLE = (dark) => `
     50%      { filter: drop-shadow(0 0 10px rgba(168,85,247,0.55)) drop-shadow(0 0 20px rgba(124,58,237,0.22)); }
   }
 
+  /* ── Mobile fit ── */
+  @media (max-width: 640px) {
+    .og-topbar { padding: 0 10px; }
+    .og-ticker-wrap { display: none; }
+    .og-divider { display: none; }
+    .og-username { display: none; }
+    .og-theme-label { display: none; }
+    .og-theme-btn { padding: 6px 9px; }
+    .og-avatar-btn { padding: 4px; gap: 0; }
+    .og-right { gap: 6px; }
+  }
+
   /* Notification bell shake */
   @keyframes bellShake {
     0%,100% { transform: rotate(0); }
@@ -640,7 +660,9 @@ export default function Topbar({ onMenuClick, dark = true, setDark = () => {} })
         <div className="og-right">
           <NotificationBell dark={dark} />
           <button className="og-theme-btn" onClick={() => setDark(d => !d)}>
-            {dark ? <><Sun size={13} style={{ color: '#f59e0b' }} /> LIGHT</> : <><Moon size={13} style={{ color: '#7c3aed' }} /> DARK</>}
+            {dark
+              ? <><Sun size={13} style={{ color: '#f59e0b' }} /> <span className="og-theme-label">LIGHT</span></>
+              : <><Moon size={13} style={{ color: '#7c3aed' }} /> <span className="og-theme-label">DARK</span></>}
           </button>
           <button className="og-avatar-btn" onClick={() => navigate('/profile')}>
             <div className="og-avatar">{user?.username?.[0]?.toUpperCase() || 'G'}</div>

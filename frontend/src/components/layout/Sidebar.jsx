@@ -725,20 +725,28 @@ export default function Sidebar({ open, onClose, width = 248, setWidth = () => {
           to   { transform: scaleY(1); opacity: 1; }
         }
         .sb-active-stripe { animation: sb-stripe-in 0.2s ease forwards; transform-origin: center; }
+
+        /* Hide the decorative Arc Reactor Clock below lg — keeps the mobile
+           sidebar short enough that Sign Out is reachable in one short scroll */
+        @media (max-width: 1023px) {
+          .sb-clock-wrap { display: none; }
+        }
       `}</style>
 
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-30 h-screen flex flex-col transition-transform duration-300 ${
+        className={`sb-scrollbar fixed lg:sticky top-0 left-0 z-30 h-screen flex flex-col transition-transform duration-300 ${
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
         style={{
           width: `${width}px`,
           background: t.bg,
           borderRight: `1px solid ${t.border}`,
-          position: 'relative',
           flexShrink: 0,
           minHeight: '100vh',
           maxHeight: '100vh',
+          overflowY: 'auto',
+          overflowX: 'hidden',
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         {/* ── Logo header ── */}
@@ -884,8 +892,9 @@ export default function Sidebar({ open, onClose, width = 248, setWidth = () => {
           </button>
         </div>
 
-        {/* ── Arc Reactor Clock ── */}
-        <div style={{
+        {/* ── Arc Reactor Clock — desktop only, hidden on mobile so Sign Out
+             is reachable without scrolling past a 550px decoration ── */}
+        <div className="sb-clock-wrap" style={{
           flexShrink: 0,
           flex: 1,
           minHeight: 550,

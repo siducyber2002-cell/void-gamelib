@@ -6,7 +6,7 @@ import StreakPopup from '../StreakPopup'
 import { useTheme } from '../../context/ThemeContext'
 
 export default function Layout() {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(248)
   const { dark, setDark } = useTheme()
 

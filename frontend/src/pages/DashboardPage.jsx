@@ -874,7 +874,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ background: pageBg, minHeight: '100vh', padding: '28px 24px 48px', fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="dash-page-wrap" style={{ background: pageBg, minHeight: '100vh', padding: '28px 24px 48px', fontFamily: 'DM Sans, sans-serif' }}>
       <style>{`
         @keyframes dashPulseRing {
           0%   { transform: scale(0.8); opacity: 0.55; }
@@ -920,6 +920,18 @@ export default function DashboardPage() {
         .dash-arc-glow         { animation: dashGlowBreathe 2.6s ease-in-out infinite; }
         .dash-donut-breathe    { animation: dashBreathe 4s ease-in-out infinite; }
         .dash-flow-dash        { animation: dashFlowDash 1.1s linear infinite; }
+
+        /* ── Mobile fit ── */
+        .dash-stat-grid,
+        .dash-row2-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+        @media (max-width: 900px) {
+          .dash-stat-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 640px) {
+          .dash-stat-grid { grid-template-columns: 1fr 1fr; }
+          .dash-row2-grid { grid-template-columns: 1fr; }
+          .dash-page-wrap { padding: 20px 14px 40px !important; }
+        }
       `}</style>
 
       {/* ── Header ── */}
@@ -955,14 +967,13 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Stat cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
-        <StatCard label="Total Games" value={gamesCount}     icon={Gamepad2}    color={ACCENT}     delay={0}   isDark={isDark} />
+      <div className="dash-stat-grid">
         <StatCard label="Friends"     value={frLoading ? '…' : friendsCount} icon={Users} color="#10b981" delay={80}  isDark={isDark} />
         <StatCard label="Completed"   value={completedCount} icon={CheckCircle} color="#8b5cf6"    delay={160} isDark={isDark} />
       </div>
 
       {/* ── Row 2: Breakdown + Progress + Streak ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
+      <div className="dash-row2-grid">
 
         {/* Library Breakdown */}
         <div style={{ ...cardStyle, padding: '24px 26px' }}>

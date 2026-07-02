@@ -663,8 +663,23 @@ export default function LoginPage() {
 
         /* Responsive */
         @media (max-width: 900px) {
+          .void-root { overflow-y: auto; overflow-x: hidden; }
           .left-panel { display: none; }
-          .right-panel { width: 100%; padding: 1.5rem; }
+          .right-panel {
+            width: 100%;
+            min-height: 100vh;
+            align-items: flex-start;
+            padding: 4.5rem 1.25rem 2rem;
+          }
+        }
+        @media (max-width: 480px) {
+          .login-card { padding: 1.9rem 1.4rem; border-radius: 14px; }
+          .card-title { font-size: 1.2rem; }
+          .card-subtitle { font-size: 0.8rem; }
+          .divider { margin: 1.15rem 0; }
+          .field-icon { width: 38px; height: 38px; }
+          .field-input { font-size: 0.92rem; }
+          .mode-toggle { top: 1rem; right: 1rem; }
         }
       `}</style>
 

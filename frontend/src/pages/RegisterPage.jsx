@@ -790,8 +790,24 @@ export default function RegisterPage() {
 
         /* Responsive */
         @media (max-width: 900px) {
+          .void-root { overflow-y: auto; overflow-x: hidden; }
           .left-panel { display: none; }
-          .right-panel { width: 100%; padding: 1.5rem; }
+          .right-panel {
+            width: 100%;
+            min-height: 100vh;
+            align-items: flex-start;
+            padding: 4.5rem 1.25rem 2rem;
+          }
+        }
+        @media (max-width: 480px) {
+          .register-card { padding: 1.75rem 1.3rem; border-radius: 14px; }
+          .card-title { font-size: 1.15rem; }
+          .card-subtitle { font-size: 0.78rem; }
+          .divider { margin: 1rem 0; }
+          .field-wrap { margin-bottom: 0.7rem; }
+          .field-icon { width: 38px; height: 38px; }
+          .field-input { font-size: 0.92rem; }
+          .mode-toggle { top: 1rem; right: 1rem; }
         }
       `}</style>
 

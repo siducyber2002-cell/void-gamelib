@@ -112,6 +112,17 @@ const GLOBAL_STYLE = (t) => `
   .notif-in { animation: notifIn 0.18s ease forwards; }
 
   @keyframes slideInRight { from{transform:translateX(100%)} to{transform:translateX(0)} }
+
+  /* ── Mobile fit ── */
+  .hp-cat-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 10px; }
+  .hp-tnr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) {
+    .hp-cat-grid { grid-template-columns: repeat(4, 1fr); }
+    .hp-tnr-grid { grid-template-columns: 1fr; gap: 28px; }
+  }
+  @media (max-width: 480px) {
+    .hp-cat-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  }
 `
 
 // ─── ACCENT PALETTE ───────────────────────────────────────────────────────────
@@ -1014,7 +1025,7 @@ export default function HomePage() {
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
             <h2 className="tnr" style={{fontSize:18,fontWeight:700,color:t.text}}>Top Categories</h2>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(8,1fr)',gap:10}}>
+          <div className="hp-cat-grid">
             {CATEGORIES.map(cat=>(
               <button key={cat.label} className="cat-card game-glow"
                 onClick={()=>setGenrePanel(cat)}
@@ -1039,7 +1050,7 @@ export default function HomePage() {
         </section>
 
         {/* ── Trending + Recommended ── */}
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:24}}>
+        <div className="hp-tnr-grid">
 
           {/* Trending */}
           <section>
