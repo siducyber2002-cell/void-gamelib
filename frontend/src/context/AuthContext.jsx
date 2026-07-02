@@ -7,17 +7,46 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [token, setToken] = useState(localStorage.getItem('gl_token'))
   const [loading, setLoading] = useState(true)
+  const [streak, setStreak] = useState(null) // { current_streak, longest_streak }
+  const [showStreakPopup, setShowStreakPopup] = useState(false)
 
   // axios.defaults.baseURL = 'http://localhost:8000'
   axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+  const checkStreak = async () => {
+    try {
+      const res = await axios.get('/api/auth/streak')
+      setStreak({
+        current_streak: res.data.current_streak,
+        longest_streak: res.data.longest_streak,
+      })
+      if (res.data.streak_increased_today) setShowStreakPopup(true)
+    } catch {
+      // silent — streak check should never break the app
+    }
+  }
+
+  const dismissStreakPopup = () => setShowStreakPopup(false)
 
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
       fetchMe()
+      checkStreak() // covers the "reopened the app with an existing session" case
     } else {
       setLoading(false)
     }
+  }, [token])
+
+  // Covers "resumed the app" — tab/window regains focus (e.g. mobile app foregrounded,
+  // browser tab switched back to). Safe to call repeatedly; backend is idempotent per day.
+  useEffect(() => {
+    if (!token) return
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') checkStreak()
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [token])
 
   const fetchMe = async () => {
@@ -41,6 +70,15 @@ export function AuthProvider({ children }) {
     axios.defaults.headers.common['Authorization'] = `Bearer ${t}`
     setToken(t)
     await fetchMe()
+
+    if (res.data.streak) {
+      setStreak({
+        current_streak: res.data.streak.current_streak,
+        longest_streak: res.data.streak.longest_streak,
+      })
+      if (res.data.streak.streak_increased_today) setShowStreakPopup(true)
+    }
+
     return res.data
   }
 
@@ -54,6 +92,8 @@ export function AuthProvider({ children }) {
     delete axios.defaults.headers.common['Authorization']
     setToken(null)
     setUser(null)
+    setStreak(null)
+    setShowStreakPopup(false)
   }
 
   const updateProfile = async (data) => {
@@ -74,7 +114,10 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, register, logout, updateProfile, changePassword, deleteAccount }}>
+    <AuthContext.Provider value={{
+      user, token, loading, login, register, logout, updateProfile, changePassword, deleteAccount,
+      streak, showStreakPopup, dismissStreakPopup, checkStreak,
+    }}>
       {children}
     </AuthContext.Provider>
   )

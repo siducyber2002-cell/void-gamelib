@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import Topbar from './Topbar'
+import StreakPopup from '../StreakPopup'
 import { useTheme } from '../../context/ThemeContext'
 
 export default function Layout() {
@@ -25,6 +26,7 @@ export default function Layout() {
       className="flex min-h-screen"
       style={{ background: dark ? '#08080f' : '#f0eeff', transition: 'background 0.3s' }}
     >
+      <StreakPopup />
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}

@@ -3,12 +3,19 @@ import {
   Gamepad2, Users, CheckCircle, PlayCircle,
   Bookmark, Heart, TrendingUp, Activity, Plus, UserPlus, LayoutDashboard, Flame
 } from 'lucide-react'
+import axios from 'axios'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
 import { useLibrary } from '../context/LibraryContext'
 
 const ACCENT   = '#a855f7'
 const ACCENT2  = '#7c3aed'
+
+// Pure date formatter used to key calendar cells against the backend's
+// 'YYYY-MM-DD' StreakLog dates — no state, no localStorage, just formatting.
+function localDateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 const STATUS_COLORS = {
   Playing:   '#3b82f6',
@@ -55,63 +62,6 @@ function timeAgo(dateStr) {
   if (months < 12) return `${months}mo ago`
 
   return `${Math.floor(months / 12)}y ago`
-}
-
-// ── Daily login streak ──────────────────────────────────────────────────────
-// Tracked client-side per user (no backend change needed): counts the app as
-// "visited" once per calendar day. If yesterday was visited too, the streak
-// continues; otherwise it resets to 1. Longest streak + full visit history
-// (for the calendar view) are remembered alongside.
-function localDateKey(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-function useLoginStreak(userId) {
-  const [streak, setStreak]   = useState(0)
-  const [longest, setLongest] = useState(0)
-  const [history, setHistory] = useState([]) // array of 'YYYY-MM-DD' visited days
-
-  useEffect(() => {
-    if (!userId) return
-    const key = `gl_streak_${userId}`
-    const today = new Date()
-    const todayKey = localDateKey(today)
-
-    let saved = null
-    try { saved = JSON.parse(localStorage.getItem(key)) } catch { /* ignore */ }
-
-    if (!saved) {
-      const fresh = { lastLogin: todayKey, streak: 1, longest: 1, history: [todayKey] }
-      localStorage.setItem(key, JSON.stringify(fresh))
-      setStreak(1); setLongest(1); setHistory(fresh.history)
-      return
-    }
-
-    const savedHistory = Array.isArray(saved.history) ? saved.history : []
-
-    if (saved.lastLogin === todayKey) {
-      setStreak(saved.streak || 1)
-      setLongest(saved.longest || saved.streak || 1)
-      setHistory(savedHistory)
-      return
-    }
-
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    const isConsecutive = saved.lastLogin === localDateKey(yesterday)
-
-    const newStreak  = isConsecutive ? (saved.streak || 0) + 1 : 1
-    const newLongest = Math.max(saved.longest || 0, newStreak)
-    // Cap history so localStorage doesn't grow unbounded over months of use
-    const newHistory = [...new Set([...savedHistory, todayKey])].slice(-120)
-
-    localStorage.setItem(key, JSON.stringify({ lastLogin: todayKey, streak: newStreak, longest: newLongest, history: newHistory }))
-    setStreak(newStreak)
-    setLongest(newLongest)
-    setHistory(newHistory)
-  }, [userId])
-
-  return { streak, longest, history }
 }
 
 function useCountUp(target, duration = 900) {
@@ -203,12 +153,6 @@ function ProgressCylinder({ pct, color, isDark, textPrimary, textSub }) {
       <span style={{ fontSize: 34, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>{Math.round(progress)}%</span>
 
       <div style={{ position: 'relative', width: W, height: H }}>
-        <div className="dash-donut-breathe" style={{
-          position: 'absolute', left: '50%', top: '50%', width: 110, height: 190,
-          transform: 'translate(-50%,-50%)', borderRadius: 60, background: color + '25',
-          filter: 'blur(26px)',
-        }} />
-
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ position: 'relative', overflow: 'visible' }}>
           <defs>
             <clipPath id="dashTubeClip">
@@ -713,7 +657,7 @@ function StreakBadge({ streak, longest, isDark }) {
 // Month calendar heatmap for the login streak — visited days get a glowing
 // filled cell, today gets a ring, styled after the reference screenshot but
 // in VOID's purple palette instead of the reference's orange.
-function StreakCalendar({ history, isDark, textPrimary, textSub }) {
+function StreakCalendar({ history, isDark, textPrimary, textSub, compact }) {
   const today = new Date()
   const year  = today.getFullYear()
   const month = today.getMonth()
@@ -728,48 +672,72 @@ function StreakCalendar({ history, isDark, textPrimary, textSub }) {
 
   const historySet = new Set(history)
   const todayKey    = localDateKey(today)
-  const monthLabel  = today.toLocaleDateString('en', { month: 'long', year: 'numeric' })
+  const monthLabel  = today.toLocaleDateString('en', { month: 'short', year: 'numeric' })
   const weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
-  const cellBg     = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.035)'
-  const cellText   = textSub
+  const cellBg      = isDark ? 'rgba(255,255,255,0.045)' : 'rgba(0,0,0,0.04)'
+  const cellBgFuture= isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)'
+  const cellText    = textSub
+  const size        = compact ? 18 : 26
+  const gap         = compact ? 3 : 4
 
   return (
     <div>
-      <p style={{ fontSize: 11.5, fontWeight: 700, color: textSub, marginBottom: 12 }}>{monthLabel}</p>
+      <p style={{ fontSize: compact ? 10 : 11.5, fontWeight: 700, color: textSub, marginBottom: 8 }}>{monthLabel}</p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gap: 4, marginBottom: 6, justifyContent: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(7, ${size}px)`, gap, marginBottom: 5, justifyContent: 'center' }}>
         {weekdayLabels.map((w, i) => (
-          <div key={i} style={{ textAlign: 'center', fontSize: 9.5, fontWeight: 800, color: textSub, letterSpacing: '0.02em' }}>
+          <div key={i} style={{ textAlign: 'center', fontSize: compact ? 8 : 9.5, fontWeight: 800, color: textSub, letterSpacing: '0.02em' }}>
             {w}
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 26px)', gridAutoRows: '26px', gap: 4, justifyContent: 'center' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(7, ${size}px)`, gridAutoRows: `${size}px`, gap, justifyContent: 'center' }}>
         {cells.map((d, i) => {
           if (d === null) return <div key={i} />
-          const key      = localDateKey(new Date(year, month, d))
+          const cellDate = new Date(year, month, d)
+          const key      = localDateKey(cellDate)
           const active   = historySet.has(key)
           const isToday  = key === todayKey
+          const isFuture = cellDate > today && !isToday
+
           return (
             <div
               key={i}
+              className={!isFuture ? 'dash-cal-cell' : undefined}
+              title={active ? 'Visited' : isToday ? 'Today' : undefined}
               style={{
-                width: 26, height: 26, borderRadius: 7,
+                width: size, height: size, borderRadius: compact ? 5 : 7,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10.5, fontWeight: 800, position: 'relative',
-                background: active ? `linear-gradient(135deg, ${ACCENT}, ${ACCENT2})` : cellBg,
-                color: active ? '#fff' : cellText,
-                boxShadow: active ? `0 0 12px ${ACCENT}55` : 'none',
-                border: isToday ? `1.5px solid ${ACCENT}` : '1.5px solid transparent',
-                transition: 'transform 0.15s ease',
+                fontSize: compact ? 8.5 : 10.5, fontWeight: 800, position: 'relative',
+                background: active
+                  ? `linear-gradient(135deg, ${ACCENT}, ${ACCENT2})`
+                  : (isFuture ? cellBgFuture : cellBg),
+                color: active ? '#fff' : (isFuture ? (isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.22)') : cellText),
+                boxShadow: active ? `0 0 10px ${ACCENT}66` : 'none',
+                border: isToday ? `1.5px solid ${active ? '#fff' : ACCENT}` : '1.5px solid transparent',
+                opacity: 0,
+                cursor: isFuture ? 'default' : 'pointer',
+                animation: 'dashCellPop 0.35s ease forwards',
+                animationDelay: `${i * 10}ms`,
               }}
             >
               {d}
             </div>
           )
         })}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 3, background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT2})` }} />
+          <span style={{ fontSize: compact ? 8.5 : 10, color: textSub, fontWeight: 600 }}>Visited</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ width: 8, height: 8, borderRadius: 3, border: `1.5px solid ${ACCENT}`, boxSizing: 'border-box' }} />
+          <span style={{ fontSize: compact ? 8.5 : 10, color: textSub, fontWeight: 600 }}>Today</span>
+        </div>
       </div>
     </div>
   )
@@ -779,7 +747,7 @@ function StreakCalendar({ history, isDark, textPrimary, textSub }) {
 
 export default function DashboardPage() {
   const { dark: isDark } = useTheme()
-  const { user }         = useAuth()
+  const { user, streak: authStreak } = useAuth()
   const { library }      = useLibrary()
 
   const [friends,        setFriends]   = useState(null)
@@ -787,7 +755,16 @@ export default function DashboardPage() {
   const [frLoading,      setFrLoading] = useState(true)
   const [lineData,       setLineData]  = useState([])
 
-  const { streak, longest, history } = useLoginStreak(user?.id)
+  const streak  = authStreak?.current_streak ?? 0
+  const longest = authStreak?.longest_streak ?? 0
+  const [history, setHistory] = useState([])
+
+  useEffect(() => {
+    if (!user) return
+    axios.get('/api/auth/streak/history')
+      .then(res => setHistory(res.data || []))
+      .catch(() => { /* calendar just stays empty — non-critical */ })
+  }, [user])
 
   // Forces a re-render every few seconds so "Xs ago" / "Xm ago" labels stay
   // live without needing to refetch any data.
@@ -925,6 +902,12 @@ export default function DashboardPage() {
           from { transform: translateX(0); }
           to   { transform: translateX(-43px); }
         }
+        @keyframes dashCellPop {
+          0%   { opacity: 0; transform: scale(0.5); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+        .dash-cal-cell { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .dash-cal-cell:hover { transform: scale(1.18); z-index: 2; }
         @keyframes dashFlamePulse {
           0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(249,115,22,0.5)); }
           50%      { transform: scale(1.1); filter: drop-shadow(0 0 8px rgba(249,115,22,0.85)); }
@@ -972,49 +955,14 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Stat cards ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
         <StatCard label="Total Games" value={gamesCount}     icon={Gamepad2}    color={ACCENT}     delay={0}   isDark={isDark} />
         <StatCard label="Friends"     value={frLoading ? '…' : friendsCount} icon={Users} color="#10b981" delay={80}  isDark={isDark} />
         <StatCard label="Completed"   value={completedCount} icon={CheckCircle} color="#8b5cf6"    delay={160} isDark={isDark} />
       </div>
 
-      {/* ── Login Streak ── */}
-      <div style={{ ...cardStyle, padding: '24px 26px', marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 10 }}>
-          <div>
-            <p style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.15em', color: ACCENT, textTransform: 'uppercase', marginBottom: 4 }}>Consistency</p>
-            <h2 style={{ fontSize: 16, fontWeight: 800, color: textPrimary, marginBottom: 2 }}>Login Streak</h2>
-            <p style={{ fontSize: 12, color: textSub }}>Keep the flame alive</p>
-          </div>
-          <Flame size={18} style={{ color: '#f97316' }} />
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-          <div style={{
-            borderRadius: 12, padding: '10px 14px', flex: 1,
-            background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.28)',
-          }}>
-            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', color: '#f97316', textTransform: 'uppercase', marginBottom: 4 }}>Current</p>
-            <p style={{ fontSize: 18, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>
-              {streak} <span style={{ fontSize: 11, fontWeight: 700, color: textSub }}>day{streak !== 1 ? 's' : ''}</span>
-            </p>
-          </div>
-          <div style={{
-            borderRadius: 12, padding: '10px 14px', flex: 1,
-            background: ACCENT + '12', border: `1px solid ${ACCENT}30`,
-          }}>
-            <p style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', color: ACCENT, textTransform: 'uppercase', marginBottom: 4 }}>Best</p>
-            <p style={{ fontSize: 18, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>
-              {longest} <span style={{ fontSize: 11, fontWeight: 700, color: textSub }}>day{longest !== 1 ? 's' : ''}</span>
-            </p>
-          </div>
-        </div>
-
-        <StreakCalendar history={history} isDark={isDark} textPrimary={textPrimary} textSub={textSub} />
-      </div>
-
-      {/* ── Row 2: Breakdown + Progress ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 14, marginBottom: 20 }}>
+      {/* ── Row 2: Breakdown + Progress + Streak ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr 1fr', gap: 14, marginBottom: 20 }}>
 
         {/* Library Breakdown */}
         <div style={{ ...cardStyle, padding: '24px 26px' }}>
@@ -1059,6 +1007,36 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Login Streak — compact square card, sits alongside Breakdown/Progress */}
+        <div style={{ ...cardStyle, padding: '20px 20px', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+            <Flame size={13} style={{ color: '#f97316' }} />
+            <p style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.15em', color: ACCENT, textTransform: 'uppercase' }}>Consistency</p>
+          </div>
+          <h2 style={{ fontSize: 16, fontWeight: 800, color: textPrimary, marginBottom: 14 }}>Login Streak</h2>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
+            <div style={{
+              aspectRatio: '1', borderRadius: 12, padding: '8px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.28)',
+            }}>
+              <p style={{ fontSize: 20, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>{streak}</p>
+              <p style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '0.05em', color: '#f97316', textTransform: 'uppercase', marginTop: 4 }}>Current</p>
+            </div>
+            <div style={{
+              aspectRatio: '1', borderRadius: 12, padding: '8px',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              background: ACCENT + '12', border: `1px solid ${ACCENT}30`,
+            }}>
+              <p style={{ fontSize: 20, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>{longest}</p>
+              <p style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '0.05em', color: ACCENT, textTransform: 'uppercase', marginTop: 4 }}>Best</p>
+            </div>
+          </div>
+
+          <StreakCalendar history={history} isDark={isDark} textPrimary={textPrimary} textSub={textSub} compact />
         </div>
       </div>
 
