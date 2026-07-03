@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Send, Minimize2, Maximize2, Circle, Loader2, Smile } from 'lucide-react'
+import { X, Send, Minimize2, Maximize2, Circle, Loader2, Smile, MoreVertical, Trash2, Check, CheckCheck, Clock } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import axios from 'axios'
@@ -32,9 +32,32 @@ function formatDateLabel(dateStr) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
-function MessageBubble({ msg, isSelf, showAvatar, friend, accentColors, isDark }) {
+function MessageBubble({ msg, isSelf, showAvatar, friend, accentColors, isDark, showStatus, selectMode, selected, onToggleSelect, canDeleteForEveryone }) {
+  const statusLabel = msg.optimistic
+    ? 'Sending…'
+    : msg.is_read
+      ? `Seen${msg.read_at ? ` · ${formatTime(msg.read_at)}` : ''}`
+      : `Sent · ${formatTime(msg.created_at)}`
+
   return (
-    <div className={`flex items-end gap-2 ${isSelf ? 'flex-row-reverse' : ''}`}>
+    <div
+      className={`flex items-end gap-2 ${isSelf ? 'flex-row-reverse' : ''} ${selectMode ? 'cursor-pointer' : ''}`}
+      onClick={() => selectMode && onToggleSelect(msg)}
+    >
+      {selectMode && (
+        <div className="flex-shrink-0 flex items-center h-full pb-1">
+          <div
+            className="w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors"
+            style={{
+              borderColor: selected ? accentColors.primary : (isDark ? '#4b5563' : '#cbd5e1'),
+              background: selected ? accentColors.primary : 'transparent',
+            }}
+          >
+            {selected && <Check size={13} color="white" />}
+          </div>
+        </div>
+      )}
+
       {!isSelf && (
         <div className="w-7 h-7 flex-shrink-0">
           {showAvatar && (
@@ -66,9 +89,23 @@ function MessageBubble({ msg, isSelf, showAvatar, friend, accentColors, isDark }
         >
           {msg.content}
         </div>
-        <span className={`text-xs px-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
-          {formatTime(msg.created_at)}
-        </span>
+
+        {/* Read receipt with real timing — WhatsApp-style: only shown on
+            the most recent message you sent, not on every bubble. */}
+        {isSelf && showStatus ? (
+          <span className={`text-[10px] px-1 flex items-center gap-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+            {msg.optimistic
+              ? <Clock size={11} />
+              : msg.is_read
+                ? <CheckCheck size={13} style={{ color: accentColors.primary }} />
+                : <Check size={13} />}
+            {statusLabel}
+          </span>
+        ) : (
+          <span className={`text-xs px-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+            {formatTime(msg.created_at)}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -88,6 +125,11 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
   const [isTyping, setIsTyping]   = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
   const [emojiTab, setEmojiTab]   = useState('Smileys')
+  const [showMenu, setShowMenu]   = useState(false)
+  const [clearing, setClearing]   = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(new Set())
+  const [deletingSelection, setDeletingSelection] = useState(false)
 
   const wsRef       = useRef(null)
   const bottomRef   = useRef(null)
@@ -97,6 +139,8 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
   const reconnectAttempt = useRef(0)
   const emojiPickerRef = useRef(null)
   const emojiBtnRef     = useRef(null)
+  const menuRef      = useRef(null)
+  const menuBtnRef   = useRef(null)
   // Track if panel is minimized in a ref so the ws handler can read it
   const minimizedRef = useRef(false)
   // Track our own in-flight optimistic messages so we can reconcile the
@@ -181,6 +225,25 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
               clearTimeout(typingTimer.current)
               typingTimer.current = setTimeout(() => setIsTyping(false), 2000)
             }
+            return
+          }
+
+          if (data.type === 'read') {
+            // The friend has now read everything up to this point — flip
+            // our sent messages to "Seen" live, with the real timestamp,
+            // no refresh needed.
+            if (data.reader_id === friend.id) {
+              setMessages(prev => prev.map(m =>
+                m.sender_id === user?.id ? { ...m, is_read: true, read_at: data.read_at } : m
+              ))
+            }
+            return
+          }
+
+          if (data.type === 'deleted') {
+            // A message was "deleted for everyone" (by its sender, within
+            // the 5-minute window) — remove it from both open panels live.
+            setMessages(prev => prev.filter(m => m.id !== data.message_id))
             return
           }
 
@@ -294,6 +357,73 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
     }
   }
 
+  const clearChat = async () => {
+    if (!window.confirm(`Clear this chat for yourself? ${friend.username} will still see the messages on their side. This can't be undone.`)) {
+      setShowMenu(false)
+      return
+    }
+    try {
+      setClearing(true)
+      await axios.delete(`/api/dm/clear/${friend.id}`)
+      setMessages([]) // clears immediately on this side; the other side is untouched
+    } catch {
+      // leave messages as-is if the delete failed server-side
+    } finally {
+      setClearing(false)
+      setShowMenu(false)
+    }
+  }
+
+  // ── Message selection (for individual delete) ─────────────
+  const FIVE_MIN_MS = 5 * 60 * 1000
+  const canDeleteForEveryone = (msg) =>
+    !msg.optimistic && msg.sender_id === user?.id &&
+    (Date.now() - new Date(msg.created_at).getTime()) <= FIVE_MIN_MS
+
+  const toggleSelect = (msg) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(msg.id) ? next.delete(msg.id) : next.add(msg.id)
+      return next
+    })
+  }
+
+  const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()) }
+
+  const selectedMsgs = messages.filter(m => selectedIds.has(m.id))
+  // "Delete for everyone" only offered when every single selected message
+  // qualifies — mixing eligible and ineligible messages in one bulk action
+  // would be confusing (partial deletes with no clear explanation why).
+  const allSelectedDeletableForEveryone = selectedMsgs.length > 0 && selectedMsgs.every(canDeleteForEveryone)
+
+  const deleteSelected = async (forEveryone) => {
+    const ids = [...selectedIds]
+    if (!ids.length) return
+    try {
+      setDeletingSelection(true)
+      await Promise.all(ids.map(id =>
+        axios.delete(`/api/dm/message/${id}`, { params: { for_everyone: forEveryone } }).catch(() => null)
+      ))
+      setMessages(prev => prev.filter(m => !selectedIds.has(m.id)))
+    } finally {
+      setDeletingSelection(false)
+      exitSelectMode()
+    }
+  }
+
+  // Close the options menu on outside click
+  useEffect(() => {
+    if (!showMenu) return
+    const h = (e) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target) &&
+        menuBtnRef.current && !menuBtnRef.current.contains(e.target)
+      ) setShowMenu(false)
+    }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [showMenu])
+
   // Close the emoji popup on outside click
   useEffect(() => {
     if (!showEmoji) return
@@ -344,6 +474,10 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
     acc[label].push(msg)
     return acc
   }, {})
+
+  // WhatsApp-style: only the most recent message *you* sent shows a
+  // Sent/Seen status — showing it on every bubble is noisy and redundant.
+  const lastSelfMsgId = [...messages].reverse().find(m => m.sender_id === user?.id)?.id
 
   return (
     <>
@@ -398,7 +532,43 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
             </p>
           </div>
 
-          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center gap-1 relative" onClick={e => e.stopPropagation()}>
+            <button
+              ref={menuBtnRef}
+              onClick={() => setShowMenu(m => !m)}
+              className={`p-1.5 rounded-lg ${minimizeBtnHover} ${iconColor} transition-colors`}
+              title="More options"
+            >
+              <MoreVertical size={15} />
+            </button>
+
+            {showMenu && (
+              <div
+                ref={menuRef}
+                className="absolute top-full right-0 mt-1 rounded-xl shadow-2xl overflow-hidden z-20"
+                style={{ width: 190, background: panelBg, border: `1px solid ${borderColor}` }}
+              >
+                <button
+                  onClick={() => { setSelectMode(true); setShowMenu(false) }}
+                  disabled={messages.length === 0}
+                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${minimizeBtnHover}`}
+                  style={{ color: isDark ? '#e5e7eb' : '#334155' }}
+                >
+                  <Check size={15} />
+                  Select messages
+                </button>
+                <button
+                  onClick={clearChat}
+                  disabled={clearing || messages.length === 0}
+                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isDark ? 'hover:bg-red-500/10' : 'hover:bg-red-50'}`}
+                  style={{ color: '#ef4444' }}
+                >
+                  {clearing ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                  Clear chat
+                </button>
+              </div>
+            )}
+
             <button
               onClick={() => setMinimized(m => !m)}
               className={`p-1.5 rounded-lg ${minimizeBtnHover} ${iconColor} transition-colors`}
@@ -461,6 +631,10 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
                           friend={friend}
                           accentColors={accentColors}
                           isDark={isDark}
+                          showStatus={msg.id === lastSelfMsgId}
+                          selectMode={selectMode}
+                          selected={selectedIds.has(msg.id)}
+                          onToggleSelect={toggleSelect}
                         />
                       )
                     })}
@@ -492,6 +666,46 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
               <div ref={bottomRef} />
             </div>
 
+            {selectMode ? (
+              /* Selection action bar — replaces the normal input while
+                 choosing messages to delete */
+              <div
+                className="px-4 py-3 flex-shrink-0 flex items-center justify-between gap-2"
+                style={{ borderTop: `1px solid ${borderColor}`, background: inputAreaBg }}
+              >
+                <button
+                  onClick={exitSelectMode}
+                  className={`p-2 rounded-lg ${minimizeBtnHover} ${iconColor}`}
+                  title="Cancel"
+                >
+                  <X size={17} />
+                </button>
+                <span className={`text-xs font-semibold flex-1 text-center ${textPrimary}`}>
+                  {selectedIds.size} selected
+                </span>
+                <button
+                  onClick={() => deleteSelected(false)}
+                  disabled={selectedIds.size === 0 || deletingSelection}
+                  title="Delete for me"
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isDark ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
+                  style={{ color: isDark ? '#e5e7eb' : '#334155' }}
+                >
+                  <Trash2 size={14} /> Delete for me
+                </button>
+                <button
+                  onClick={() => deleteSelected(true)}
+                  disabled={!allSelectedDeletableForEveryone || deletingSelection}
+                  title={allSelectedDeletableForEveryone
+                    ? 'Delete for everyone'
+                    : 'Only available for your own messages, within 5 minutes of sending'}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${isDark ? 'hover:bg-red-500/10' : 'hover:bg-red-50'}`}
+                  style={{ color: '#ef4444' }}
+                >
+                  {deletingSelection ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Everyone
+                </button>
+              </div>
+            ) : (
+              <>
             {/* Input */}
             <div
               className="relative px-4 py-3 flex-shrink-0 flex items-end gap-2"
@@ -566,6 +780,8 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
             <p className={`text-xs text-center pb-2 ${textMuted}`}>
               Enter to send · Shift+Enter for new line
             </p>
+              </>
+            )}
           </>
         )}
       </div>
