@@ -97,14 +97,6 @@ export default function FriendsPage() {
   }, [])
   useEffect(() => { loadFriends() }, [loadFriends])
 
-  // Presence (online/offline) changes over time even without any action on
-  // this page — refetch periodically so it doesn't go stale while the tab
-  // is sitting open. 20s matches the heartbeat interval in Topbar.jsx.
-  useEffect(() => {
-    const id = setInterval(loadFriends, 20000)
-    return () => clearInterval(id)
-  }, [loadFriends])
-
   // If a chat panel is open, keep its friend data (avatar, online status,
   // etc.) in sync with the periodic refresh above — otherwise it's stuck
   // showing whatever was true the moment the panel was opened.
