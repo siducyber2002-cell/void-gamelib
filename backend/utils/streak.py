@@ -15,9 +15,8 @@ class StreakResult:
 def update_user_streak(user: User, db: Session) -> StreakResult:
     """
     Call this whenever we detect the user is "active" (login, or app resume/mount).
-    It's safe to call multiple times per day — it only changes the streak (and
-    only logs one StreakLog row) the FIRST time it's called on a given
-    calendar day for that user.
+    It's safe to call multiple times per day — it only changes the streak the
+    FIRST time it's called on a given calendar day for that user.
     """
     today = date.today()
     last = user.last_login_date
@@ -40,11 +39,13 @@ def update_user_streak(user: User, db: Session) -> StreakResult:
     user.longest_streak = max(user.longest_streak, user.current_streak)
     user.last_login_date = today
 
-    # Record today's visit for the calendar view. Guard against a rare
-    # race (e.g. two requests landing at once before the first commits).
-    already_logged = db.query(StreakLog).filter(
-        StreakLog.user_id == user.id, StreakLog.date == today
-    ).first()
+    # Record today as a visited day — this is what the calendar/history reads.
+    # Guard against a duplicate row if this somehow runs twice in a race.
+    already_logged = (
+        db.query(StreakLog)
+        .filter(StreakLog.user_id == user.id, StreakLog.date == today)
+        .first()
+    )
     if not already_logged:
         db.add(StreakLog(user_id=user.id, date=today))
 

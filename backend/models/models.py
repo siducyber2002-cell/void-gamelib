@@ -1,19 +1,11 @@
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean,
-    DateTime, ForeignKey, Enum
+    DateTime, Date, ForeignKey, Enum, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
-from datetime import datetime, timezone
 import enum
 from db.database import Base
-
-# A user counts as "online" if we've heard from them (via the heartbeat
-# endpoint, pinged every ~20s by the frontend while the app is open) within
-# this many seconds. Self-correcting: close the tab / lose connection and
-# they naturally fall back to "offline" without needing an explicit
-# logout signal.
-ONLINE_THRESHOLD_SECONDS = 45
 
 
 class GameStatus(str, enum.Enum):
@@ -45,22 +37,13 @@ class User(Base):
     level           = Column(Integer, default=1)
     xp              = Column(Integer, default=0)
     is_active       = Column(Boolean, default=True)
-    last_seen       = Column(DateTime(timezone=True), nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
 
-    @property
-    def online(self) -> bool:
-        """True if last_seen was updated within ONLINE_THRESHOLD_SECONDS.
-        Not a DB column — computed live so it never goes stale in a way that
-        needs cleanup. Pydantic's `from_attributes` mode reads this like any
-        other attribute, so it flows straight into UserPublic responses."""
-        if not self.last_seen:
-            return False
-        last = self.last_seen
-        if last.tzinfo is None:
-            last = last.replace(tzinfo=timezone.utc)
-        return (datetime.now(timezone.utc) - last).total_seconds() < ONLINE_THRESHOLD_SECONDS
+    # ── Login streak ──
+    last_login_date = Column(Date, nullable=True)       # date (no time) of most recent counted login
+    current_streak  = Column(Integer, default=0, nullable=False)
+    longest_streak  = Column(Integer, default=0, nullable=False)
 
     library           = relationship("UserGame",        back_populates="user", cascade="all, delete")
     achievements      = relationship("UserAchievement", back_populates="user", cascade="all, delete")
@@ -72,6 +55,23 @@ class User(Base):
     activities         = relationship("UserActivity",    back_populates="user",    cascade="all, delete")
     sent_messages      = relationship("DirectMessage",   foreign_keys="DirectMessage.sender_id",   back_populates="sender",   cascade="all, delete")
     received_messages  = relationship("DirectMessage",   foreign_keys="DirectMessage.receiver_id", back_populates="receiver", cascade="all, delete")
+    streak_logs         = relationship("StreakLog",       back_populates="user",    cascade="all, delete")
+
+
+# ─── Streak Log (one row per day the user was active) ────
+# This is what actually powers the calendar/history view — last_login_date
+# alone can't tell you WHICH past days were visited, only the most recent one.
+class StreakLog(Base):
+    __tablename__ = "streak_logs"
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_streak_log_user_date"),
+    )
+
+    id      = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    date    = Column(Date, nullable=False, index=True)
+
+    user = relationship("User", back_populates="streak_logs")
 
 
 # ─── Game ────────────────────────────────────────────────
@@ -219,16 +219,7 @@ class DirectMessage(Base):
     room_id     = Column(String(50), nullable=False, index=True)
     content     = Column(Text, nullable=False)
     is_read     = Column(Boolean, default=False)
-    read_at     = Column(DateTime(timezone=True), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
-
-    # "Delete for me" is per-side, not a real row delete — each participant
-    # can independently hide a message on their own view. Once BOTH sides
-    # have hidden it (or it's deleted "for everyone"), the row is actually
-    # purged, which is what keeps this a genuine space saver rather than a
-    # permanent hide flag nobody ever cleans up.
-    deleted_for_sender   = Column(Boolean, default=False)
-    deleted_for_receiver = Column(Boolean, default=False)
 
     sender   = relationship("User", foreign_keys=[sender_id], back_populates="sent_messages")
     receiver = relationship("User", foreign_keys=[receiver_id], back_populates="received_messages")

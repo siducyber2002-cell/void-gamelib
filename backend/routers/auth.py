@@ -4,11 +4,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import List
-from datetime import datetime, timezone
 from db.database import get_db
-from models.models import User
-from schemas.schemas import UserRegister, UserOut, UserUpdate, TokenResponse, ChangePassword, UserPublic
+from models.models import User, StreakLog
+from schemas.schemas import UserRegister, UserOut, UserUpdate, TokenResponse, ChangePassword, UserPublic, StreakOut
 from utils.auth import hash_password, verify_password, create_access_token, get_current_user
+from utils.streak import update_user_streak
 
 
 class DeleteAccountRequest(BaseModel):
@@ -48,10 +48,9 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             detail="Incorrect email/username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user.last_seen = datetime.now(timezone.utc)
-    db.commit()
     token = create_access_token(data={"sub": str(user.id)})
-    return {"access_token": token, "token_type": "bearer"}
+    streak = update_user_streak(user, db)
+    return {"access_token": token, "token_type": "bearer", "streak": streak}
 
 
 @router.get("/me", response_model=UserOut)
@@ -59,17 +58,36 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
-@router.post("/heartbeat")
-def heartbeat(
+@router.get("/streak", response_model=StreakOut)
+def get_streak(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Pinged every ~20s by the frontend while the app is open (see
-    Topbar.jsx). Keeps User.last_seen fresh so User.online reflects real
-    presence instead of a hardcoded True."""
-    current_user.last_seen = datetime.now(timezone.utc)
-    db.commit()
-    return {"ok": True}
+    """
+    Call this on app mount / resume (not just login) — e.g. when the tab
+    regains focus or the app comes back to the foreground. It's safe to call
+    repeatedly; the streak only advances once per calendar day per user.
+    `streak_increased_today` tells the frontend whether to show the popup.
+    """
+    return update_user_streak(current_user, db)
+
+
+@router.get("/streak/history")
+def get_streak_history(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Returns every date (YYYY-MM-DD) the user has ever logged in, as a flat
+    list of strings — this is what the dashboard calendar checks each day
+    against to decide whether to light up a cell.
+    """
+    logs = (
+        db.query(StreakLog)
+        .filter(StreakLog.user_id == current_user.id)
+        .all()
+    )
+    return [log.date.isoformat() for log in logs]
 
 
 @router.put("/me", response_model=UserOut)
