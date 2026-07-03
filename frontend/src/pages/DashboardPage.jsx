@@ -654,90 +654,165 @@ function StreakBadge({ streak, longest, isDark }) {
   )
 }
 
-// Month calendar heatmap for the login streak — visited days get a glowing
-// filled cell, today gets a ring, styled after the reference screenshot but
-// in VOID's purple palette instead of the reference's orange.
-function StreakCalendar({ history, isDark, textPrimary, textSub, compact }) {
-  const today = new Date()
+// ── Login Streak widget (neon design, compact) ─────────────────────────────
+// Small square card — no XP (that lives on the Profile page), a real
+// current-month calendar with visible day numbers, and streak-based badges.
+// Deliberately keeps its own dark/neon palette regardless of the app's
+// light/dark toggle — that's the designer's look, not the dashboard's.
+
+function useCountUpNeon(target, duration, delay) {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    let raf
+    const timeout = setTimeout(() => {
+      let start = null
+      const step = (ts) => {
+        if (!start) start = ts
+        const t = Math.min((ts - start) / duration, 1)
+        const e = 1 - Math.pow(1 - t, 3)
+        setVal(Math.round(e * target))
+        if (t < 1) raf = requestAnimationFrame(step)
+      }
+      raf = requestAnimationFrame(step)
+    }, delay)
+    return () => { clearTimeout(timeout); cancelAnimationFrame(raf) }
+  }, [target, duration, delay])
+  return val
+}
+
+function SwordIcon({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 28 28" fill="none">
+      <path d="M20 4L24 8L12 20L8 24L4 24L4 20L16 8L20 4Z" stroke="#00f5ff" strokeWidth={1.5} strokeLinejoin="round" fill="#00f5ff18" />
+      <path d="M18 6L22 10" stroke="#00f5ff" strokeWidth={1.5} strokeLinecap="round" />
+      <path d="M4 22L6 20" stroke="#00f5ff" strokeWidth={2} strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function LoginStreakWidget({ streak, longest, history, user }) {
+  const [gridVisible, setGridVisible] = useState(false)
+  const today = useMemo(() => new Date(), [])
+  const historySet = useMemo(() => new Set(history || []), [history])
+  const streakCount = useCountUpNeon(streak, 800, 200)
+
+  useEffect(() => {
+    const t = setTimeout(() => setGridVisible(true), 150)
+    return () => clearTimeout(t)
+  }, [])
+
+  // Current-month calendar — day numbers always show, regardless of whether
+  // that day has login history yet (fixes "why are all the cells blank").
   const year  = today.getFullYear()
   const month = today.getMonth()
-
   const firstOfMonth = new Date(year, month, 1)
   const startOffset  = (firstOfMonth.getDay() + 6) % 7 // Monday-first
   const daysInMonth  = new Date(year, month + 1, 0).getDate()
-
   const cells = []
   for (let i = 0; i < startOffset; i++) cells.push(null)
   for (let d = 1; d <= daysInMonth; d++) cells.push(d)
+  const todayKey   = localDateKey(today)
+  const monthLabel = today.toLocaleDateString('en', { month: 'short' })
 
-  const historySet = new Set(history)
-  const todayKey    = localDateKey(today)
-  const monthLabel  = today.toLocaleDateString('en', { month: 'short', year: 'numeric' })
-  const weekdayLabels = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+  // Badges stay tied to the streak logic — no separate achievements endpoint.
+  const achievements = useMemo(() => ([
+    { icon: '⚔️', label: '7-Day',   unlocked: longest >= 7   },
+    { icon: '🏆', label: 'Month',   unlocked: longest >= 30  },
+    { icon: '💎', label: '100-Day', unlocked: longest >= 100 },
+  ]), [longest])
 
-  const cellBg      = isDark ? 'rgba(255,255,255,0.045)' : 'rgba(0,0,0,0.04)'
-  const cellBgFuture= isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.015)'
-  const cellText    = textSub
-  const size        = compact ? 18 : 26
-  const gap         = compact ? 3 : 4
+  const neon   = '#00f5ff'
+  const purple = '#bf5fff'
+  const playerName = (user?.username || 'player').toUpperCase()
+  const level = user?.level ?? 1
 
   return (
-    <div>
-      <p style={{ fontSize: compact ? 10 : 11.5, fontWeight: 700, color: textSub, marginBottom: 8 }}>{monthLabel}</p>
+    <div style={{
+      background: '#06060f', border: `1px solid ${neon}25`, borderRadius: 20,
+      padding: 18, display: 'flex', flexDirection: 'column', gap: 12,
+      position: 'relative', overflow: 'hidden', height: '100%',
+      boxShadow: `0 0 24px ${neon}08, inset 0 0 24px ${purple}05`,
+      fontFamily: "'DM Mono', monospace",
+    }}>
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${neon}, ${purple}, transparent)` }} />
 
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(7, ${size}px)`, gap, marginBottom: 5, justifyContent: 'center' }}>
-        {weekdayLabels.map((w, i) => (
-          <div key={i} style={{ textAlign: 'center', fontSize: compact ? 8 : 9.5, fontWeight: 800, color: textSub, letterSpacing: '0.02em' }}>
-            {w}
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <SwordIcon />
+          <div>
+            <p style={{ fontSize: 9, color: neon, letterSpacing: '0.15em', textTransform: 'uppercase', margin: 0, opacity: 0.7 }}>Daily Login</p>
+            <p style={{ fontSize: 11, color: '#f0f0f4', margin: 0, fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{playerName}</p>
+          </div>
+        </div>
+        <div style={{ background: `${purple}20`, border: `1px solid ${purple}50`, borderRadius: 4, padding: '3px 7px', fontSize: 9.5, color: purple, letterSpacing: '0.08em', flexShrink: 0 }}>
+          LVL {level}
+        </div>
+      </div>
+
+      {/* Streak number */}
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <span style={{
+          fontSize: '2.5rem', fontWeight: 700, color: neon, lineHeight: 1,
+          textShadow: `0 0 16px ${neon}, 0 0 30px ${neon}50`, letterSpacing: '-0.02em',
+        }}>
+          {streakCount}
+        </span>
+        <div>
+          <p style={{ fontSize: '0.6rem', color: neon, margin: 0, opacity: 0.6, letterSpacing: '0.08em' }}>DAY</p>
+          <p style={{ fontSize: '0.6rem', color: neon, margin: 0, opacity: 0.6, letterSpacing: '0.08em' }}>STREAK</p>
+        </div>
+      </div>
+
+      {/* Calendar */}
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+          <span style={{ fontSize: 9, color: neon, letterSpacing: '0.1em', opacity: 0.7 }}>{monthLabel.toUpperCase()}</span>
+          <span style={{ fontSize: 9, color: '#717182' }}>Best {longest}</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+          {cells.map((d, i) => {
+            if (d === null) return <div key={i} />
+            const cellDate = new Date(year, month, d)
+            const key      = localDateKey(cellDate)
+            const active   = historySet.has(key)
+            const isToday  = key === todayKey
+            return (
+              <div key={i} style={{
+                aspectRatio: '1', borderRadius: 3,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 8.5, fontWeight: 700,
+                background: active ? `${neon}22` : '#ffffff06',
+                border: isToday ? `1px solid ${neon}` : active ? `1px solid ${neon}35` : '1px solid transparent',
+                color: active ? neon : '#6a6a7a',
+                boxShadow: active ? `0 0 6px ${neon}40` : 'none',
+                transform: gridVisible ? 'scale(1)' : 'scale(0.6)',
+                opacity: gridVisible ? 1 : 0,
+                transition: `transform 0.25s ease ${i * 8}ms, opacity 0.25s ease ${i * 8}ms`,
+              }}>
+                {d}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Badges */}
+      <div style={{ display: 'flex', gap: 6 }}>
+        {achievements.map((a, i) => (
+          <div key={i} title={a.label} style={{
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            padding: '6px 4px', borderRadius: 6,
+            background: a.unlocked ? `${purple}15` : '#ffffff05',
+            border: a.unlocked ? `1px solid ${purple}35` : '1px solid transparent',
+            opacity: a.unlocked ? 1 : 0.35,
+          }}>
+            <span style={{ fontSize: '0.85rem' }}>{a.icon}</span>
+            <span style={{ fontSize: 7, color: a.unlocked ? '#f0f0f4' : '#4a4a5a', textAlign: 'center', lineHeight: 1.1, fontFamily: "'DM Sans', sans-serif" }}>
+              {a.label}
+            </span>
           </div>
         ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(7, ${size}px)`, gridAutoRows: `${size}px`, gap, justifyContent: 'center' }}>
-        {cells.map((d, i) => {
-          if (d === null) return <div key={i} />
-          const cellDate = new Date(year, month, d)
-          const key      = localDateKey(cellDate)
-          const active   = historySet.has(key)
-          const isToday  = key === todayKey
-          const isFuture = cellDate > today && !isToday
-
-          return (
-            <div
-              key={i}
-              className={!isFuture ? 'dash-cal-cell' : undefined}
-              title={active ? 'Visited' : isToday ? 'Today' : undefined}
-              style={{
-                width: size, height: size, borderRadius: compact ? 5 : 7,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: compact ? 8.5 : 10.5, fontWeight: 800, position: 'relative',
-                background: active
-                  ? `linear-gradient(135deg, ${ACCENT}, ${ACCENT2})`
-                  : (isFuture ? cellBgFuture : cellBg),
-                color: active ? '#fff' : (isFuture ? (isDark ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.22)') : cellText),
-                boxShadow: active ? `0 0 10px ${ACCENT}66` : 'none',
-                border: isToday ? `1.5px solid ${active ? '#fff' : ACCENT}` : '1.5px solid transparent',
-                opacity: 0,
-                cursor: isFuture ? 'default' : 'pointer',
-                animation: 'dashCellPop 0.35s ease forwards',
-                animationDelay: `${i * 10}ms`,
-              }}
-            >
-              {d}
-            </div>
-          )
-        })}
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 3, background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT2})` }} />
-          <span style={{ fontSize: compact ? 8.5 : 10, color: textSub, fontWeight: 600 }}>Visited</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ width: 8, height: 8, borderRadius: 3, border: `1.5px solid ${ACCENT}`, boxSizing: 'border-box' }} />
-          <span style={{ fontSize: compact ? 8.5 : 10, color: textSub, fontWeight: 600 }}>Today</span>
-        </div>
       </div>
     </div>
   )
@@ -1021,34 +1096,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Login Streak — compact square card, sits alongside Breakdown/Progress */}
-        <div style={{ ...cardStyle, padding: '20px 20px', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-            <Flame size={13} style={{ color: '#f97316' }} />
-            <p style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.15em', color: ACCENT, textTransform: 'uppercase' }}>Consistency</p>
-          </div>
-          <h2 style={{ fontSize: 16, fontWeight: 800, color: textPrimary, marginBottom: 14 }}>Login Streak</h2>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-            <div style={{
-              aspectRatio: '1', borderRadius: 12, padding: '8px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.28)',
-            }}>
-              <p style={{ fontSize: 20, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>{streak}</p>
-              <p style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '0.05em', color: '#f97316', textTransform: 'uppercase', marginTop: 4 }}>Current</p>
-            </div>
-            <div style={{
-              aspectRatio: '1', borderRadius: 12, padding: '8px',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              background: ACCENT + '12', border: `1px solid ${ACCENT}30`,
-            }}>
-              <p style={{ fontSize: 20, fontWeight: 900, color: textPrimary, lineHeight: 1 }}>{longest}</p>
-              <p style={{ fontSize: 8.5, fontWeight: 800, letterSpacing: '0.05em', color: ACCENT, textTransform: 'uppercase', marginTop: 4 }}>Best</p>
-            </div>
-          </div>
-
-          <StreakCalendar history={history} isDark={isDark} textPrimary={textPrimary} textSub={textSub} compact />
-        </div>
+        <LoginStreakWidget streak={streak} longest={longest} history={history} user={user} />
       </div>
 
       {/* ── Row 3: Line Chart ── */}
