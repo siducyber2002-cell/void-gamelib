@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean,
-    DateTime, ForeignKey, Enum
+    DateTime, Date, ForeignKey, Enum, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -45,16 +45,24 @@ class User(Base):
     level           = Column(Integer, default=1)
     xp              = Column(Integer, default=0)
     is_active       = Column(Boolean, default=True)
-    last_seen       = Column(DateTime(timezone=True), nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now())
     updated_at      = Column(DateTime(timezone=True), onupdate=func.now())
+
+    # ── Login streak ──
+    last_login_date = Column(Date, nullable=True)       # date (no time) of most recent counted login
+    current_streak  = Column(Integer, default=0, nullable=False)
+    longest_streak  = Column(Integer, default=0, nullable=False)
+
+    # ── Presence ──
+    last_seen = Column(DateTime(timezone=True), nullable=True)
 
     @property
     def online(self) -> bool:
         """True if last_seen was updated within ONLINE_THRESHOLD_SECONDS.
-        Not a DB column — computed live so it never goes stale in a way that
-        needs cleanup. Pydantic's `from_attributes` mode reads this like any
-        other attribute, so it flows straight into UserPublic responses."""
+        Not a DB column — computed live so it never goes stale in a way
+        that needs cleanup. Pydantic's `from_attributes` mode reads this
+        like any other attribute, so it flows straight into UserPublic
+        responses."""
         if not self.last_seen:
             return False
         last = self.last_seen
@@ -72,6 +80,23 @@ class User(Base):
     activities         = relationship("UserActivity",    back_populates="user",    cascade="all, delete")
     sent_messages      = relationship("DirectMessage",   foreign_keys="DirectMessage.sender_id",   back_populates="sender",   cascade="all, delete")
     received_messages  = relationship("DirectMessage",   foreign_keys="DirectMessage.receiver_id", back_populates="receiver", cascade="all, delete")
+    streak_logs         = relationship("StreakLog",       back_populates="user",    cascade="all, delete")
+
+
+# ─── Streak Log (one row per day the user was active) ────
+# This is what actually powers the calendar/history view — last_login_date
+# alone can't tell you WHICH past days were visited, only the most recent one.
+class StreakLog(Base):
+    __tablename__ = "streak_logs"
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_streak_log_user_date"),
+    )
+
+    id      = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    date    = Column(Date, nullable=False, index=True)
+
+    user = relationship("User", back_populates="streak_logs")
 
 
 # ─── Game ────────────────────────────────────────────────

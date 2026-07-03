@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
 from typing import List
+from datetime import datetime, timezone
 from db.database import get_db
 from models.models import User, StreakLog
 from schemas.schemas import UserRegister, UserOut, UserUpdate, TokenResponse, ChangePassword, UserPublic, StreakOut
@@ -48,6 +49,7 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
             detail="Incorrect email/username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    user.last_seen = datetime.now(timezone.utc)
     token = create_access_token(data={"sub": str(user.id)})
     streak = update_user_streak(user, db)
     return {"access_token": token, "token_type": "bearer", "streak": streak}
@@ -56,6 +58,19 @@ def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get
 @router.get("/me", response_model=UserOut)
 def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+@router.post("/heartbeat")
+def heartbeat(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pinged every ~20s by the frontend while the app is open (see
+    Topbar.jsx). Keeps User.last_seen fresh so User.online reflects real
+    presence."""
+    current_user.last_seen = datetime.now(timezone.utc)
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/streak", response_model=StreakOut)
