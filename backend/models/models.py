@@ -219,7 +219,16 @@ class DirectMessage(Base):
     room_id     = Column(String(50), nullable=False, index=True)
     content     = Column(Text, nullable=False)
     is_read     = Column(Boolean, default=False)
+    read_at     = Column(DateTime(timezone=True), nullable=True)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
+
+    # "Delete for me" is per-side, not a real row delete — each participant
+    # can independently hide a message on their own view. Once BOTH sides
+    # have hidden it (or it's deleted "for everyone"), the row is actually
+    # purged, which is what keeps this a genuine space saver rather than a
+    # permanent hide flag nobody ever cleans up.
+    deleted_for_sender   = Column(Boolean, default=False)
+    deleted_for_receiver = Column(Boolean, default=False)
 
     sender   = relationship("User", foreign_keys=[sender_id], back_populates="sent_messages")
     receiver = relationship("User", foreign_keys=[receiver_id], back_populates="received_messages")

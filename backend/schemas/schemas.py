@@ -268,6 +268,7 @@ class DMMessageOut(BaseModel):
     room_id:     str
     content:     str
     is_read:     bool
+    read_at:     Optional[datetime] = None
     created_at:  datetime
 
     model_config = {"from_attributes": True}
