@@ -30,16 +30,9 @@ class UserLogin(BaseModel):
     password: str
 
 
-class StreakOut(BaseModel):
-    current_streak:          int
-    longest_streak:          int
-    streak_increased_today:  bool   # frontend: show the congrats popup when this is True
-
-
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    streak: StreakOut
 
 
 class ChangePassword(BaseModel):
@@ -75,8 +68,6 @@ class UserOut(BaseModel):
     favorite_game: Optional[str] = ""
     level:         int
     xp:            int
-    current_streak: int = 0
-    longest_streak: int = 0
     created_at:    datetime
 
     model_config = {"from_attributes": True}
@@ -90,6 +81,7 @@ class UserPublic(BaseModel):
     country:       Optional[str] = ""
     favorite_game: Optional[str] = ""
     level:         int
+    online:        bool = False
 
     model_config = {"from_attributes": True}
 

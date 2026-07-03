@@ -8,7 +8,7 @@ from schemas.schemas import DMMessageOut, DMSend
 from utils.auth import get_current_user
 from jose import jwt, JWTError
 import os, json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/api/dm", tags=["Direct Messages"])
 
@@ -162,8 +162,8 @@ def get_unread_count(
 
 
 # ─── REST: Mark messages as read ─────────────────────────
-# Now broadcasts a live "read" event to the *sender's* socket (if they have
-# the room open) so their sent bubbles can flip from Sent → Seen instantly,
+# Broadcasts a live "read" event to the *sender's* socket (if they have the
+# room open) so their sent bubbles can flip from Sent → Seen instantly,
 # instead of only updating once they reload/reopen the panel.
 @router.post("/read/{other_user_id}")
 async def mark_read(
@@ -171,17 +171,16 @@ async def mark_read(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    now = datetime.now(timezone.utc)
     updated = db.query(DirectMessage).filter(
         DirectMessage.sender_id   == other_user_id,
         DirectMessage.receiver_id == current_user.id,
         DirectMessage.is_read     == False,
-    ).update({"is_read": True, "read_at": now})
+    ).update({"is_read": True})
     db.commit()
 
     if updated:
         room_id = get_room_id(current_user.id, other_user_id)
-        payload = {"type": "read", "reader_id": current_user.id, "read_at": now.isoformat()}
+        payload = {"type": "read", "reader_id": current_user.id}
         for uid, ws in list(active_rooms.get(room_id, {}).items()):
             try:
                 await ws.send_text(json.dumps(payload))
@@ -191,98 +190,31 @@ async def mark_read(
     return {"ok": True}
 
 
-
-# ─── REST: Clear chat — "delete for me" only ─────────────
-# This clears the conversation on the CALLER's side only; the other
-# person's copy is untouched. There's a separate, per-message
-# "delete for everyone" below for actually removing something both sides
-# see. A row only gets truly purged from the DB once BOTH participants
-# have cleared/deleted it on their own side — that's what keeps this
-# genuinely freeing space instead of just piling up hidden rows forever.
+# ─── REST: Clear chat (deletes the conversation, both sides) ────
+# Broadcasts live so if the other user has the panel open, it clears for
+# them immediately too instead of them seeing stale messages that no
+# longer exist server-side.
 @router.delete("/clear/{other_user_id}")
-def clear_chat(
+async def clear_chat(
     other_user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    msgs = db.query(DirectMessage).filter(
+    db.query(DirectMessage).filter(
         or_(
             and_(DirectMessage.sender_id == current_user.id, DirectMessage.receiver_id == other_user_id),
             and_(DirectMessage.sender_id == other_user_id,   DirectMessage.receiver_id == current_user.id),
         )
-    ).all()
-
-    for msg in msgs:
-        if msg.sender_id == current_user.id:
-            msg.deleted_for_sender = True
-        else:
-            msg.deleted_for_receiver = True
-
-    for msg in msgs:
-        if msg.deleted_for_sender and msg.deleted_for_receiver:
-            db.delete(msg)
-
+    ).delete(synchronize_session=False)
     db.commit()
-    return {"ok": True}
 
-
-# ─── REST: Delete a single message ───────────────────────
-# for_everyone=False (default) → "delete for me": hides it on the caller's
-#   side only, anytime, no time limit. Purged for real once both sides
-#   have hidden it.
-# for_everyone=True → "delete for everyone": only the ORIGINAL SENDER can
-#   do this, and only within 5 minutes of sending (matches what was asked
-#   for) — after that window, or for the receiver, it's 403'd and only
-#   "delete for me" remains available. Removes the row outright and
-#   broadcasts live so it disappears from both open panels immediately.
-DELETE_FOR_EVERYONE_WINDOW = timedelta(minutes=5)
-
-@router.delete("/message/{message_id}")
-async def delete_message(
-    message_id: int,
-    for_everyone: bool = Query(False),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    msg = db.query(DirectMessage).filter(DirectMessage.id == message_id).first()
-    if not msg:
-        raise HTTPException(status_code=404, detail="Message not found")
-    if current_user.id not in (msg.sender_id, msg.receiver_id):
-        raise HTTPException(status_code=403, detail="Not your conversation")
-
-    if for_everyone:
-        if msg.sender_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Only the sender can delete a message for everyone")
-
-        created = msg.created_at
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        if datetime.now(timezone.utc) - created > DELETE_FOR_EVERYONE_WINDOW:
-            raise HTTPException(
-                status_code=403,
-                detail="Too late to delete for everyone — the 5 minute window has passed. You can still delete it for yourself.",
-            )
-
-        room_id = get_room_id(msg.sender_id, msg.receiver_id)
-        db.delete(msg)
-        db.commit()
-
-        payload = {"type": "deleted", "message_id": message_id}
-        for uid, ws in list(active_rooms.get(room_id, {}).items()):
-            try:
-                await ws.send_text(json.dumps(payload))
-            except Exception:
-                active_rooms[room_id].pop(uid, None)
-
-    else:
-        if current_user.id == msg.sender_id:
-            msg.deleted_for_sender = True
-        else:
-            msg.deleted_for_receiver = True
-
-        if msg.deleted_for_sender and msg.deleted_for_receiver:
-            db.delete(msg)
-        db.commit()
+    room_id = get_room_id(current_user.id, other_user_id)
+    payload = {"type": "cleared", "cleared_by": current_user.id}
+    for uid, ws in list(active_rooms.get(room_id, {}).items()):
+        try:
+            await ws.send_text(json.dumps(payload))
+        except Exception:
+            active_rooms[room_id].pop(uid, None)
 
     return {"ok": True}
 
@@ -300,16 +232,6 @@ def get_history(
             or_(
                 and_(DirectMessage.sender_id == current_user.id, DirectMessage.receiver_id == other_user_id),
                 and_(DirectMessage.sender_id == other_user_id,   DirectMessage.receiver_id == current_user.id),
-            )
-        )
-        # Exclude anything the CALLER specifically deleted "for me" — the
-        # other participant's own copy (if they haven't also deleted it)
-        # is untouched by this filter, since deleted_for_sender/receiver
-        # are tracked per side, not globally.
-        .filter(
-            or_(
-                and_(DirectMessage.sender_id == current_user.id, DirectMessage.deleted_for_sender == False),
-                and_(DirectMessage.receiver_id == current_user.id, DirectMessage.deleted_for_receiver == False),
             )
         )
         .order_by(DirectMessage.created_at.asc())
