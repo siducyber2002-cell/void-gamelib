@@ -363,7 +363,7 @@ export default function FriendsPage() {
       >
         {/* Colored banner — shows the friend's actual cover photo when they have one */}
         <div style={{
-          height: 80,
+          height: 120,
           background: `linear-gradient(135deg, ${color}60 0%, ${color}20 60%, transparent 100%)`,
           backgroundColor: isDark ? '#1a1a2e' : '#f8f6ff',
           position: 'relative',

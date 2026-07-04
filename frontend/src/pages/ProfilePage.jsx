@@ -274,7 +274,7 @@ export default function ProfilePage() {
           style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}>
 
           {/* Banner / cover photo */}
-          <div className="h-40 sm:h-48 relative group overflow-hidden"
+          <div className="h-56 sm:h-64 relative group overflow-hidden"
             style={{ background: `linear-gradient(135deg, ${accent}40, #8b5cf640, #f43f5e28)` }}>
 
             {coverUrl && (
