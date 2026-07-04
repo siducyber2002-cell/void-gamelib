@@ -167,7 +167,7 @@ export default function NewsPage() {
   const gridArticles = page === 1 ? articles.slice(1) : articles
 
   return (
-    <div className="relative min-h-screen h-full animate-fade-in" style={{ background: pageBg, fontFamily: 'DM Sans, sans-serif' }}>
+    <div className="relative min-h-screen h-full w-full max-w-full overflow-x-hidden animate-fade-in" style={{ background: pageBg, fontFamily: 'DM Sans, sans-serif' }}>
       <style>{`
         @keyframes newsRock {
           0%,70% { transform: rotate(0deg); }
@@ -186,17 +186,17 @@ export default function NewsPage() {
         input[type="date"]::-webkit-calendar-picker-indicator { filter: ${isDark ? 'invert(1)' : 'none'}; opacity: 0.5; cursor: pointer; }
       `}</style>
 
-      <div className="relative px-6 py-7 flex flex-col gap-6" style={{ zIndex: 1 }}>
+      <div className="relative px-4 sm:px-6 py-7 flex flex-col gap-6 max-w-full overflow-x-hidden" style={{ zIndex: 1 }}>
 
         {/* Header */}
-        <div className="rounded-2xl px-7 py-6 flex items-center justify-between"
+        <div className="rounded-2xl px-5 sm:px-7 py-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
           style={{ background: surfaceBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}>
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: accent }}>Stay In The Loop</p>
-            <h1 className="text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>Gaming News</h1>
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>Gaming News</h1>
             <p className="text-sm mt-2" style={{ color: textSub }}>Latest headlines, updates, and releases from the gaming world</p>
           </div>
-          <div className="relative w-14 h-14 flex items-center justify-center">
+          <div className="relative w-14 h-14 flex items-center justify-center shrink-0 self-start sm:self-auto">
             <span className="absolute inset-0 rounded-2xl live-ring"       style={{ background: accent + '30' }} />
             <span className="absolute inset-0 rounded-2xl live-ring-delay" style={{ background: accent + '30' }} />
             <div className="relative w-14 h-14 rounded-2xl flex items-center justify-center"

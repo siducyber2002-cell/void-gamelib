@@ -133,7 +133,13 @@ export default function FriendsPage() {
   const [gridCols, setGridCols] = useState(3)
   useEffect(() => {
     if (!outerWidth) return
-    const pagePadding = isMobile ? 32 : 64
+    // On mobile/Android widths, always render friend cards stacked in a
+    // single column — computeCols() is tuned for wider viewports and can
+    // still return 2+ on phones with slightly generous widths, which is
+    // what caused the squashed/misaligned cards on Android. Below the
+    // isMobile breakpoint we skip that math entirely and force 1.
+    if (isMobile) { setGridCols(1); return }
+    const pagePadding = 64
     setGridCols(computeCols(outerWidth - chatPushPx - pagePadding))
   }, [outerWidth, chatPushPx, isMobile])
 
@@ -720,7 +726,7 @@ export default function FriendsPage() {
 
   // ── main render ───────────────────────────────────────────
   return (
-    <div ref={outerRef} style={{ position: 'relative', background: bgPage, minHeight: '100%' }}>
+    <div ref={outerRef} style={{ position: 'relative', background: bgPage, minHeight: '100%', maxWidth: '100vw', overflowX: 'hidden' }}>
       <style>{`
         .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }

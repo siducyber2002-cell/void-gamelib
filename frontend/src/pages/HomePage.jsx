@@ -52,6 +52,9 @@ const LIGHT = {
 const GLOBAL_STYLE = (t) => `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap');
   * { box-sizing: border-box; }
+  @media (max-width: 640px) {
+    html, body { overflow-x: hidden; max-width: 100vw; }
+  }
   .tnr  { font-family: 'Orbitron', serif !important; letter-spacing: -0.01em; }
   .mono { font-family: 'Share Tech Mono', monospace; }
 
@@ -723,6 +726,22 @@ export default function HomePage() {
   const filmRef   = useRef(null)
   const autoRef   = useRef(null)
 
+  // Mobile/Android layout detection — the hero card's text block and the
+  // floating nav arrows both sit inside the same relatively-positioned card
+  // with only a fixed 36px right padding, which is enough clearance on wide
+  // desktop cards but not on narrow Android widths, where the text runs out
+  // toward the right edge and collides with the arrow buttons. We detect
+  // mobile widths here so we can give the content extra right-side padding
+  // and pull the arrows in, without touching anything on desktop.
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  )
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640)
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
   const{games:hero,loading:heroLoading}=useHeroGames()
   const{newReleases,trending,recommended,loading}=useHomeData()
   const heroCovers = useCovers(hero.slice(0,60))
@@ -785,7 +804,9 @@ export default function HomePage() {
 
       <div className="inter" style={{
         background:t.bg, color:t.text, minHeight:'100vh',
-        padding:'20px 24px 40px', display:'flex', flexDirection:'column', gap:32,
+        padding: isMobile ? '16px 14px 32px' : '20px 24px 40px',
+        display:'flex', flexDirection:'column', gap: isMobile ? 24 : 32,
+        maxWidth:'100vw', overflowX:'hidden',
         transition:'background 0.3s, color 0.3s',
       }}>
 
@@ -863,7 +884,8 @@ export default function HomePage() {
                 <div className="hero-in" key={heroIdx} style={{
                   position:'relative',zIndex:3,height:'100%',
                   display:'flex',flexDirection:'column',justifyContent:'flex-end',
-                  padding:'32px 36px 36px',maxWidth:580,gap:0,
+                  padding: isMobile ? '28px 64px 32px 20px' : '32px 36px 36px',
+                  maxWidth:580,gap:0,boxSizing:'border-box',
                 }}>
                   {/* Genre + Year badge */}
                   <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
@@ -940,7 +962,7 @@ export default function HomePage() {
 
                 {/* Nav arrows */}
                 <div style={{
-                  position:'absolute',right:16,top:'50%',transform:'translateY(-50%)',
+                  position:'absolute',right: isMobile ? 10 : 16,top:'50%',transform:'translateY(-50%)',
                   display:'flex',flexDirection:'column',gap:8,zIndex:4,
                 }}>
                   <button onClick={prev} style={{
@@ -957,7 +979,7 @@ export default function HomePage() {
 
                 {/* Dot indicators */}
                 <div style={{
-                  position:'absolute',bottom:16,left:32,display:'flex',gap:5,zIndex:4,alignItems:'center',
+                  position:'absolute',bottom:16,left: isMobile ? 20 : 32,display:'flex',gap:5,zIndex:4,alignItems:'center',
                 }}>
                   {hero.slice(0,Math.min(hero.length,MAX_DOTS)).map((_,i)=>(
                     <button key={i} className="hero-dot"
