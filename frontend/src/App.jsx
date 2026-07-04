@@ -19,6 +19,7 @@ import ProfilePage from './pages/ProfilePage'
 import SettingsPage from './pages/SettingsPage'
 import AchievementsPage from './pages/AchievementsPage'
 import FriendsPage from './pages/FriendsPage'
+import AboutPage from './pages/AboutPage'
 
 function VoidLoader() {
   return (
@@ -165,6 +166,7 @@ export default function App() {
                   <Route path="/settings" element={<SettingsPage />} />
                   <Route path="/achievements" element={<AchievementsPage />} />
                   <Route path="/friends" element={<FriendsPage />} />
+                  <Route path="/about" element={<AboutPage />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

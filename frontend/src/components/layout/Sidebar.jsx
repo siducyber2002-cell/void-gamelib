@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext'
 import {
   Home, Compass, BookOpen, Flame, Newspaper,
   MessageSquare, LayoutDashboard, User,
-  Trophy, Users, LogOut, Zap, Settings, ChevronsLeft, ChevronsRight,
+  Trophy, Users, LogOut, Zap, Settings, ChevronsLeft, ChevronsRight, Info,
 } from 'lucide-react'
 
 // ── VOID Wordmark — unique SVG IDs via useId to prevent collisions with Topbar ──
@@ -581,6 +581,7 @@ const NAV_SECTIONS = [
       { to: '/achievements', icon: Trophy,   label: 'Achievements' },
       { to: '/friends',      icon: Users,    label: 'Friends'      },
       { to: '/settings',     icon: Settings, label: 'Settings'     },
+      { to: '/about',        icon: Info,     label: 'About Us'     },
     ],
   },
 ]
