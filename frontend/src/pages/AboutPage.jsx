@@ -18,7 +18,7 @@ const PEOPLE = [
     accent: '#a855f7',
     icon: Code2,
     blurb:
-      "Builds everything under the hood — the backend, the real-time systems, the AI pieces, the parts that make VOID actually work, not just look like it works. Also, by his own admission, the confident one of the two.",
+      "Writes the backend, wires up the real-time chat, breaks it, fixes it, breaks it again. Fully convinced he's the main character. Statistically, he's not wrong that VOID wouldn't exist without him.",
   },
   {
     name: 'Subhranil Manna',
@@ -27,7 +27,7 @@ const PEOPLE = [
     accent: '#f97316',
     icon: Palette,
     blurb:
-      "Shapes how VOID looks and feels, and keeps throwing out the ideas that turn a working app into a place people actually want to hang out. The calm, kind one — every duo needs one.",
+      "Decides what VOID should look like before Siddhartha decides what it should do. Suspiciously calm about all the times it broke. Probably the reason this site doesn't look like a spreadsheet.",
   },
 ]
 
@@ -62,17 +62,21 @@ export default function AboutPage() {
             photo show regardless of its aspect ratio; the surrounding panel
             fills any letterbox space with a themed gradient instead of
             plain black bars. */}
+        {/* Hero photo — sized to the image's own natural aspect ratio, not a
+            fixed box. No object-fit trick (cover/contain) is used, because
+            both of those force a shape onto the image: cover crops it,
+            contain leaves empty space around it. Instead the image is just
+            full-width with auto height, so whatever photo gets swapped in
+            here later — any dimensions, portrait or landscape — always
+            renders completely, edge to edge, with no cropping and no gaps. */}
         <div
-          className="relative rounded-2xl sm:rounded-3xl overflow-hidden mb-8 sm:mb-12 flex items-center justify-center"
-          style={{
-            border: `1px solid ${borderCol}`,
-            background: 'linear-gradient(135deg, #1e1140, #0b0b12 60%)',
-          }}
+          className="relative rounded-2xl sm:rounded-3xl overflow-hidden mb-8 sm:mb-12"
+          style={{ border: `1px solid ${borderCol}` }}
         >
           <img
             src={teamPhoto}
             alt="Siddhartha Dhar and Subhranil Manna, the two people behind VOID"
-            className="w-full max-h-[320px] sm:max-h-[420px] md:max-h-[560px] object-contain"
+            className="w-full h-auto block"
           />
           <div
             className="absolute bottom-0 left-0 right-0 px-4 py-3 sm:px-6 sm:py-4 flex items-center gap-2 flex-wrap"
@@ -80,7 +84,7 @@ export default function AboutPage() {
           >
             <Sparkles size={15} className="flex-shrink-0" color="#e9d5ff" />
             <span className="text-xs sm:text-sm font-semibold text-purple-100">
-              Siddhartha &amp; Subhranil — brothers from another mother, since 2020
+              Siddhartha &amp; Subhranil — friends since 2020, still not sick of each other
             </span>
           </div>
         </div>
@@ -95,23 +99,20 @@ export default function AboutPage() {
           </h2>
           <div className="text-sm leading-relaxed space-y-3" style={{ color: textMuted }}>
             <p>
-              Siddhartha and Subhranil have been best friends since 2020 — the
-              kind of friendship where "best friends" doesn't really cover it
-              anymore, so they just call each other brothers. Same journey,
-              different mothers, all the way from college to now.
+              Siddhartha and Subhranil have been friends since 2020 and somehow
+              still haven't gotten sick of each other — through college, group
+              projects, and now this.
             </p>
             <p>
-              The idea for VOID existed long before either of them wrote a
-              single line of code for it. It sat around as a "someday" project
-              for years before Siddhartha officially started building it on
-              June 1, 2026 — turning a running joke between two friends into
-              an actual, working website.
+              VOID was a "someday" idea for years before it was an actual
+              project. Siddhartha finally sat down and started building it for
+              real on June 1, 2026, turning a running joke into a website that
+              people can actually log into.
             </p>
             <p>
-              VOID is built with Siddhartha's own logic and problem-solving,
-              with Claude (Anthropic's AI) as a coding partner along the way —
-              and Subhranil's eye for how it should look and feel shaping
-              every screen.
+              It's built on Siddhartha's own logic and code, with Claude
+              (Anthropic's AI) as a coding partner for the harder parts, and
+              Subhranil making sure none of it looked like a spreadsheet.
             </p>
           </div>
         </div>
