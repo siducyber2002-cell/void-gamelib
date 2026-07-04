@@ -1,22 +1,6 @@
 """
 Profile image routes: avatar + cover photo upload/removal via Supabase Storage.
 
-WHERE THIS FILE GOES:
-Drop this alongside your other route modules (e.g. next to xp.py, library.py,
-friends.py) and include it in your main FastAPI app:
-
-    from routes.profile import router as profile_router
-    app.include_router(profile_router, prefix="/api/profile", tags=["profile"])
-
-ASSUMPTIONS YOU'LL NEED TO ADJUST (marked with # ADJUST below):
-1. You already have a Supabase client instance somewhere — import it instead
-   of creating a new one here, OR fill in your env var names if this is the
-   first place you're creating one.
-2. You have an auth dependency (get_current_user) that returns the logged-in
-   user with at least a `.id` attribute — swap in your real one.
-3. Your users/profiles table name and its avatar_url / cover_url columns —
-   adjust `PROFILES_TABLE` and the column names if they differ.
-
 ONE-TIME SUPABASE DASHBOARD SETUP (do this before testing):
 1. Go to Storage in your Supabase dashboard.
 2. Create a bucket named "avatars" — set it to Public.
@@ -31,13 +15,10 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from supabase import create_client, Client
 
-# ADJUST: replace with your actual auth dependency import
-from app.dependencies.auth import get_current_user  # noqa: F401 (adjust path)
+from utils.auth import get_current_user
 
 router = APIRouter()
 
-# ADJUST: reuse your existing Supabase client instead of creating a new one,
-# if you already initialize one elsewhere in the app.
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]  # service role, NOT the anon key — storage writes need this
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
