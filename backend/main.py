@@ -9,7 +9,7 @@ from db.database import engine, Base
 from models import models  # ensure all models are imported before create_all
 
 # Import routers
-from routers import auth, games, library, friends, community, achievements, dashboard, news, reviews, dm,xp
+from routers import auth, games, library, friends, community, achievements, dashboard, news, reviews, dm, xp, profile
 
 # ─── Create tables ───────────────────────────────────────
 Base.metadata.create_all(bind=engine)
@@ -50,6 +50,7 @@ app.include_router(news.router)
 app.include_router(reviews.router)
 app.include_router(dm.router)
 app.include_router(xp.router)
+app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
 
 
 @app.get("/")
