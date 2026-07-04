@@ -658,8 +658,8 @@ function StreakBadge({ streak, longest, isDark }) {
 // ── Login Streak widget (neon design, compact) ─────────────────────────────
 // Small square card — no XP (that lives on the Profile page), a real
 // current-month calendar with visible day numbers, and streak-based badges.
-// Deliberately keeps its own dark/neon palette regardless of the app's
-// light/dark toggle — that's the designer's look, not the dashboard's.
+// Background/text now follow the app's light/dark toggle like every other
+// dashboard card; only the purple glow accents stay fixed as the design signature.
 
 function useCountUpNeon(target, duration, delay) {
   const [val, setVal] = useState(0)
@@ -691,7 +691,7 @@ function SwordIcon({ size = 22, color = '#a855f7' }) {
   )
 }
 
-function LoginStreakWidget({ streak, longest, history, user }) {
+function LoginStreakWidget({ streak, longest, history, user, isDark }) {
   const [gridVisible, setGridVisible] = useState(true)
   const [slideDir, setSlideDir] = useState(1) // 1 = forward/right, -1 = back/left
   const today = useMemo(() => new Date(), [])
@@ -744,14 +744,34 @@ function LoginStreakWidget({ streak, longest, history, user }) {
   const playerName = (user?.username || 'player').toUpperCase()
   const level = user?.level ?? 1
 
+  // Same palette tokens the rest of the dashboard cards use, so this widget
+  // reads as part of the page instead of a separate dark panel. Purple
+  // accents (glow/glow2) stay untouched — only the black/near-black
+  // background and text got swapped for theme-matched equivalents.
+  const cardBg      = isDark ? 'rgba(18,24,40,0.92)' : 'rgba(255,255,255,0.97)'
+  const cardBorder  = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)'
+  const textPrimary = isDark ? '#e8edf5' : '#0f172a'
+  const textSub     = isDark ? '#8892a4' : '#64748b'
+  const cellBg      = isDark ? 'linear-gradient(145deg, rgba(255,255,255,0.055), rgba(255,255,255,0.02))'
+                              : 'linear-gradient(145deg, rgba(0,0,0,0.035), rgba(0,0,0,0.012))'
+  const cellShadow  = isDark ? '0 2px 0 rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)'
+                              : '0 1px 0 rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.6)'
+  const badgeLockedBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)'
+  const navBg1      = isDark ? '#241a3d' : '#f3e8ff'
+  const navBg2      = isDark ? '#170f28' : '#e9d5ff'
+  const navBg1Hover = isDark ? '#2f2251' : '#ead9ff'
+  const navBg2Hover = isDark ? '#1c1332' : '#ddc4fd'
+
   return (
     <div style={{
-      background: 'linear-gradient(160deg, #150f28 0%, #0c0818 60%, #0a0714 100%)',
+      background: cardBg,
       border: `1px solid ${glow}30`, borderRadius: 20,
       padding: 18, display: 'flex', flexDirection: 'column', gap: 12,
       position: 'relative', overflow: 'hidden', height: '100%',
       boxShadow: `0 0 24px ${glow}10, inset 0 0 30px ${glow2}0c`,
       fontFamily: "'DM Mono', monospace",
+      '--nav-bg-1': navBg1, '--nav-bg-2': navBg2,
+      '--nav-bg-1-hover': navBg1Hover, '--nav-bg-2-hover': navBg2Hover,
     }}>
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${glow}, ${glow2}, transparent)` }} />
 
@@ -761,7 +781,7 @@ function LoginStreakWidget({ streak, longest, history, user }) {
           <SwordIcon color={glow} />
           <div>
             <p style={{ fontSize: 9, color: glow, letterSpacing: '0.15em', textTransform: 'uppercase', margin: 0, opacity: 0.8 }}>Daily Login</p>
-            <p style={{ fontSize: 11, color: '#f0f0f4', margin: 0, fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{playerName}</p>
+            <p style={{ fontSize: 11, color: textPrimary, margin: 0, fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{playerName}</p>
           </div>
         </div>
         <div style={{ background: `${glow2}25`, border: `1px solid ${glow2}55`, borderRadius: 4, padding: '3px 7px', fontSize: 9.5, color: '#d3b3ff', letterSpacing: '0.08em', flexShrink: 0 }}>
@@ -797,7 +817,7 @@ function LoginStreakWidget({ streak, longest, history, user }) {
 
           <span style={{ fontSize: 9.5, color: glow, letterSpacing: '0.1em', opacity: 0.9, fontWeight: 700, textAlign: 'center' }}>
             {monthLabel.toUpperCase()} {year}
-            {isCurrentMonth && <span style={{ color: '#717182', fontWeight: 500 }}> · Best {longest}</span>}
+            {isCurrentMonth && <span style={{ color: textSub, fontWeight: 500 }}> · Best {longest}</span>}
           </span>
 
           <button
@@ -828,12 +848,12 @@ function LoginStreakWidget({ streak, longest, history, user }) {
                 fontSize: 8.5, fontWeight: 700,
                 background: active
                   ? `linear-gradient(145deg, ${glow}, ${glow2})`
-                  : 'linear-gradient(145deg, #201735, #150f26)',
-                border: isToday ? `1px solid ${glow}` : active ? `1px solid ${glow}70` : '1px solid rgba(168,85,247,0.08)',
-                color: active ? '#fff' : '#9088a8',
+                  : cellBg,
+                border: isToday ? `1px solid ${glow}` : active ? `1px solid ${glow}70` : '1px solid rgba(168,85,247,0.12)',
+                color: active ? '#fff' : textSub,
                 boxShadow: active
                   ? `0 2px 0 ${glow2}cc, 0 4px 10px ${glow}40, inset 0 1px 1px rgba(255,255,255,0.35)`
-                  : `0 2px 0 rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)`,
+                  : cellShadow,
                 transform: gridVisible ? 'scale(1) translateY(0)' : 'scale(0.6) translateY(4px)',
                 opacity: gridVisible ? 1 : 0,
                 transitionDelay: `${i * 8}ms`,
@@ -851,12 +871,12 @@ function LoginStreakWidget({ streak, longest, history, user }) {
           <div key={i} title={a.label} style={{
             flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             padding: '6px 4px', borderRadius: 6,
-            background: a.unlocked ? `${glow2}20` : '#ffffff05',
+            background: a.unlocked ? `${glow2}20` : badgeLockedBg,
             border: a.unlocked ? `1px solid ${glow2}45` : '1px solid transparent',
-            opacity: a.unlocked ? 1 : 0.35,
+            opacity: a.unlocked ? 1 : 0.5,
           }}>
             <span style={{ fontSize: '0.85rem' }}>{a.icon}</span>
-            <span style={{ fontSize: 7, color: a.unlocked ? '#f0f0f4' : '#4a4a5a', textAlign: 'center', lineHeight: 1.1, fontFamily: "'DM Sans', sans-serif" }}>
+            <span style={{ fontSize: 7, color: a.unlocked ? textPrimary : textSub, textAlign: 'center', lineHeight: 1.1, fontFamily: "'DM Sans', sans-serif" }}>
               {a.label}
             </span>
           </div>
@@ -1052,7 +1072,7 @@ export default function DashboardPage() {
         .dash-cal-nav-btn {
           width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0;
           display: flex; align-items: center; justify-content: center;
-          background: linear-gradient(145deg, #241a3d, #170f28);
+          background: linear-gradient(145deg, var(--nav-bg-1, #241a3d), var(--nav-bg-2, #170f28));
           border: 1px solid rgba(168,85,247,0.3);
           color: var(--nav-glow, #a855f7);
           box-shadow: 0 2px 0 rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
@@ -1061,7 +1081,7 @@ export default function DashboardPage() {
         }
         .dash-cal-nav-btn:hover {
           transform: translateY(-1px);
-          background: linear-gradient(145deg, #2f2251, #1c1332);
+          background: linear-gradient(145deg, var(--nav-bg-1-hover, #2f2251), var(--nav-bg-2-hover, #1c1332));
           box-shadow: 0 3px 0 rgba(0,0,0,0.4), 0 0 8px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
         }
         .dash-cal-nav-btn:active {
@@ -1182,7 +1202,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Login Streak — compact square card, sits alongside Breakdown/Progress */}
-        <LoginStreakWidget streak={streak} longest={longest} history={history} user={user} />
+        <LoginStreakWidget streak={streak} longest={longest} history={history} user={user} isDark={isDark} />
       </div>
 
       {/* ── Row 3: Line Chart ── */}
