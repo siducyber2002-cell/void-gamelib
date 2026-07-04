@@ -154,7 +154,9 @@ export default function ProfilePage() {
       <>
         <div className="fixed inset-0 z-40" onClick={close} />
         <div
-          className={`absolute z-50 top-full mt-2 w-44 rounded-xl overflow-hidden py-1 ${isAvatar ? 'left-0' : 'right-0'}`}
+          className={`absolute z-50 w-44 rounded-xl overflow-hidden py-1 ${
+            isAvatar ? 'top-full mt-2 left-0' : 'bottom-full mb-2 right-0'
+          }`}
           style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}
         >
           <button
