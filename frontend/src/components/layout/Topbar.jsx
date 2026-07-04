@@ -616,7 +616,8 @@ const TOPBAR_STYLE = (dark) => `
   .og-theme-btn:hover { border-color: ${dark ? '#a855f755' : '#7c3aed55'} !important; }
   .og-avatar-btn { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 22px; border: 1px solid ${dark ? '#2a2a4a' : '#e2dcf5'}; background: ${dark ? '#0d0d20' : '#f5f3ff'}; cursor: pointer; transition: border-color 0.2s, background 0.2s; outline: none; }
   .og-avatar-btn:hover { border-color: ${dark ? '#a855f755' : '#7c3aed44'} !important; }
-  .og-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); display: flex; align-items: center; justify-content: center; font-family: 'Orbitron', sans-serif; font-size: 11px; font-weight: 900; color: #fff; flex-shrink: 0; }
+  .og-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); display: flex; align-items: center; justify-content: center; font-family: 'Orbitron', sans-serif; font-size: 11px; font-weight: 900; color: #fff; flex-shrink: 0; overflow: hidden; }
+  .og-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .og-username { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: ${dark ? '#a5b4fc' : '#6d28d9'}; letter-spacing: 0.04em; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .og-online-dot { width: 6px; height: 6px; border-radius: 50%; background: #34d399; box-shadow: 0 0 5px #34d399; flex-shrink: 0; }
   .og-menu-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: 1px solid ${dark ? '#1e1e32' : '#e2dcf5'}; background: transparent; cursor: pointer; transition: background 0.15s; outline: none; color: ${dark ? '#a855f7' : '#7c3aed'}; }
@@ -683,7 +684,11 @@ export default function Topbar({ onMenuClick, dark = true, setDark = () => {} })
               : <><Moon size={13} style={{ color: '#7c3aed' }} /> <span className="og-theme-label">DARK</span></>}
           </button>
           <button className="og-avatar-btn" onClick={() => navigate('/profile')}>
-            <div className="og-avatar">{user?.username?.[0]?.toUpperCase() || 'G'}</div>
+            <div className="og-avatar">
+              {user?.avatar_url
+                ? <img src={user.avatar_url} alt="" />
+                : (user?.username?.[0]?.toUpperCase() || 'G')}
+            </div>
             <span className="og-username">{user?.username || 'Player'}</span>
             <div className="og-online-dot" />
           </button>

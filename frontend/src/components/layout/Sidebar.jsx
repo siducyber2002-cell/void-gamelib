@@ -1125,8 +1125,11 @@ export default function Sidebar({ open, onClose, width = 248, setWidth = () => {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontFamily: "'Orbitron', sans-serif", fontSize: 12, fontWeight: 700, color: '#fff',
               boxShadow: '0 3px 8px rgba(124,58,237,0.5), inset 0 1px 0 rgba(255,255,255,0.3)',
+              overflow: 'hidden',
             }}>
-              {user?.username?.[0]?.toUpperCase() || 'G'}
+              {user?.avatar_url
+                ? <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : (user?.username?.[0]?.toUpperCase() || 'G')}
               {collapsed && (
                 <span style={{
                   position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%',
