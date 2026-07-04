@@ -57,7 +57,7 @@ export default function ProfilePage() {
 
   // Avatar / cover photo state
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || null)
-  const [coverUrl, setCoverUrl]   = useState(user?.cover_url  || null)
+  const [coverUrl, setCoverUrl]   = useState(user?.banner_url || null)
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [coverUploading, setCoverUploading]   = useState(false)
   const avatarInputRef = useRef(null)
@@ -93,11 +93,13 @@ export default function ProfilePage() {
 
     try {
       const formData = new FormData()
-      formData.append(kind, file)
+      formData.append('file', file)
       const { data } = await axios.post(`/api/profile/${kind}`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setUrl(data?.[`${kind}_url`] || previewUrl)
+      // Backend column for "cover" is actually named banner_url
+      const responseKey = isAvatar ? 'avatar_url' : 'banner_url'
+      setUrl(data?.[responseKey] || previewUrl)
       toast.success(isAvatar ? 'Profile picture updated!' : 'Cover photo updated!')
     } catch (err) {
       console.error(`${kind} upload failed:`, err)
