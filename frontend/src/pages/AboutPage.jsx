@@ -1,6 +1,6 @@
 import { Code2, Palette, Github, Linkedin, Mail, Sparkles } from 'lucide-react'
-import { useTheme } from '../../context/ThemeContext'
-import teamPhoto from '../../assets/team-duo.jpg'
+import { useTheme } from '../context/ThemeContext'
+import teamPhoto from '../assets/team-duo.jpg'
 
 // ── About Us — VOID ─────────────────────────────────────────────
 // Drop this in as src/pages/AboutPage.jsx (or wherever your other
