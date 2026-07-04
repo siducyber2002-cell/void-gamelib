@@ -179,20 +179,25 @@ export default function FriendsPage() {
   }, [friends])
 
   // ── deep-link: notification bell → /friends?tab=Friends&dm=<friendId> ──
-  // Auto-open that friend's DM panel once friends have loaded. Guarded by a
-  // ref so it only fires once per page load — if the user closes the panel
-  // themselves afterward, it shouldn't keep popping back open.
-  const autoOpenedDM = useRef(false)
+  // Auto-open that friend's DM panel once friends have loaded. Tracks the
+  // *last dm id we auto-opened* (not just a boolean) — the notification
+  // bell uses navigate() to change the URL without remounting this page,
+  // so a plain "already ran once" flag would block every deep-link after
+  // the first one until a hard refresh reset it. Comparing the id instead
+  // still stops the same id from reopening if the user closes it manually,
+  // while letting a *new* dm= id open the panel every time.
+  const lastAutoOpenedDM = useRef(null)
   useEffect(() => {
-    if (autoOpenedDM.current || loading) return
+    if (loading) return
     const dmParam = searchParams.get('dm')
     if (!dmParam) return
+    if (lastAutoOpenedDM.current === dmParam) return
     const match = friends
       .map(f => getPartner(f))
       .find(f => String(f.id) === dmParam)
     if (match) {
       setChatFriend(match)
-      autoOpenedDM.current = true
+      lastAutoOpenedDM.current = dmParam
     }
   }, [searchParams, loading, friends])
 
