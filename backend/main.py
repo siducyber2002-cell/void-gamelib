@@ -50,7 +50,7 @@ app.include_router(news.router)
 app.include_router(reviews.router)
 app.include_router(dm.router)
 app.include_router(xp.router)
-app.include_router(profile.router, prefix="/api/profile", tags=["profile"])
+app.include_router(profile.router, tags=["profile"])
 
 
 @app.get("/")
