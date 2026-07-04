@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 
 // Image upload constraints — adjust freely
-const MAX_IMAGE_MB = 5
+const MAX_IMAGE_MB = 2
 const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024
 const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']
 const ACCEPTED_IMAGE_ACCEPT = ACCEPTED_IMAGE_TYPES.join(',')
