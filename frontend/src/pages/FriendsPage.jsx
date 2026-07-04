@@ -367,14 +367,15 @@ export default function FriendsPage() {
           background: `linear-gradient(135deg, ${color}60 0%, ${color}20 60%, transparent 100%)`,
           backgroundColor: isDark ? '#1a1a2e' : '#f8f6ff',
           position: 'relative',
-          overflow: 'hidden',
         }}>
           {friend.banner_url && (
-            <img
-              src={friend.banner_url}
-              alt=""
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-            />
+            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+              <img
+                src={friend.banner_url}
+                alt=""
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
           )}
           {/* Online ring + avatar */}
           <div style={{
