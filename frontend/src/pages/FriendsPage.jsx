@@ -361,13 +361,21 @@ export default function FriendsPage() {
             : isDark ? 'none' : '0 2px 12px rgba(0,0,0,0.06)'
         }}
       >
-        {/* Colored banner */}
+        {/* Colored banner — shows the friend's actual cover photo when they have one */}
         <div style={{
           height: 80,
           background: `linear-gradient(135deg, ${color}60 0%, ${color}20 60%, transparent 100%)`,
           backgroundColor: isDark ? '#1a1a2e' : '#f8f6ff',
           position: 'relative',
+          overflow: 'hidden',
         }}>
+          {friend.banner_url && (
+            <img
+              src={friend.banner_url}
+              alt=""
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          )}
           {/* Online ring + avatar */}
           <div style={{
             position: 'absolute', bottom: -26, left: '50%', transform: 'translateX(-50%)',
@@ -866,7 +874,7 @@ export default function FriendsPage() {
                 <p style={{ fontSize: 20, fontWeight: 800, color: txtPri, marginBottom: 8 }}>No friends yet</p>
                 <p style={{ color: txtSec }}>Use "Find People" to grow your squad</p>
               </div>
-            : <div style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`, gap: 20 }}>
+            : <div style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: 20 }}>
                 {filteredFriends.map(f => <FriendCard key={f.id} friend={f} />)}
               </div>
         )}
@@ -963,7 +971,7 @@ export default function FriendsPage() {
                 <p style={{ fontWeight: 800, color: txtPri, marginBottom: 8 }}>Nobody online right now</p>
                 <p style={{ color: txtSec, fontSize: 13 }}>Your friends will appear here when active</p>
               </div>
-            : <div style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`, gap: 20 }}>
+            : <div style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: 20 }}>
                 {friendPartners.filter(f => f.online).map(f => (
                   <div
                     key={f.id}
