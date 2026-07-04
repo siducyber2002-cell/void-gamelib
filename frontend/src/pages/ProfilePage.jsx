@@ -43,7 +43,7 @@ function timeAgo(dateStr) {
 }
 
 export default function ProfilePage() {
-  const { user, updateProfile } = useAuth()
+  const { user, updateProfile, updateUserFields } = useAuth()
   const { dark: isDark } = useTheme()
   const accent = '#a855f7'
 
@@ -64,6 +64,16 @@ export default function ProfilePage() {
   const coverInputRef  = useRef(null)
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
   const [coverMenuOpen, setCoverMenuOpen]   = useState(false)
+
+  // `user` loads asynchronously (fetchMe runs after mount), so the initial
+  // useState above can miss it. Keep these in sync whenever user changes —
+  // e.g. right after login/refresh, or after an upload updates context.
+  useEffect(() => {
+    if (user) {
+      setAvatarUrl(user.avatar_url || null)
+      setCoverUrl(user.banner_url || null)
+    }
+  }, [user])
 
   const validateImage = (file) => {
     if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
@@ -99,7 +109,9 @@ export default function ProfilePage() {
       })
       // Backend column for "cover" is actually named banner_url
       const responseKey = isAvatar ? 'avatar_url' : 'banner_url'
-      setUrl(data?.[responseKey] || previewUrl)
+      const finalUrl = data?.[responseKey] || previewUrl
+      setUrl(finalUrl)
+      updateUserFields({ [responseKey]: finalUrl })
       toast.success(isAvatar ? 'Profile picture updated!' : 'Cover photo updated!')
     } catch (err) {
       console.error(`${kind} upload failed:`, err)
@@ -120,6 +132,7 @@ export default function ProfilePage() {
     setUrl(null)
     try {
       await axios.delete(`/api/profile/${kind}`)
+      updateUserFields({ [isAvatar ? 'avatar_url' : 'banner_url']: '' })
       toast.success(isAvatar ? 'Profile picture removed' : 'Cover photo removed')
     } catch (err) {
       console.error(`${kind} removal failed:`, err)

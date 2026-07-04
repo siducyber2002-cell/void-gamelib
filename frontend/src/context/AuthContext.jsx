@@ -102,6 +102,13 @@ export function AuthProvider({ children }) {
     return res.data
   }
 
+  // Merge partial fields (e.g. { avatar_url } or { banner_url }) into the
+  // shared user object without a full refetch — used after image upload/removal
+  // so every component reading `user` (sidebar, friends page, etc.) updates instantly.
+  const updateUserFields = (fields) => {
+    setUser(prev => (prev ? { ...prev, ...fields } : prev))
+  }
+
   const changePassword = async (data) => {
     const res = await axios.post('/api/auth/change-password', data)
     return res.data
@@ -115,7 +122,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, token, loading, login, register, logout, updateProfile, changePassword, deleteAccount,
+      user, token, loading, login, register, logout, updateProfile, updateUserFields, changePassword, deleteAccount,
       streak, showStreakPopup, dismissStreakPopup, checkStreak,
     }}>
       {children}
