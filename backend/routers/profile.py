@@ -48,6 +48,19 @@ def _extension_for(content_type: str) -> str:
     }[content_type]
 
 
+def _delete_stored_object(bucket: str, current_url: str | None):
+    """Delete the actual file object in Supabase Storage that a URL points
+    to. Safe to call with None/empty — does nothing in that case. Used by
+    both upload (to clean up the file being replaced) and remove."""
+    if not current_url:
+        return
+    # Public URLs look like: {SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}
+    marker = f"/{bucket}/"
+    if marker in current_url:
+        object_path = current_url.split(marker, 1)[1]
+        supabase.storage.from_(bucket).remove([object_path])
+
+
 async def _handle_upload(kind: str, file: UploadFile, user: User, db: Session):
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Please upload a PNG, JPG, WEBP or GIF image")
@@ -61,12 +74,23 @@ async def _handle_upload(kind: str, file: UploadFile, user: User, db: Session):
     ext = _extension_for(file.content_type)
     # A fresh filename per upload avoids stale CDN/browser caching of the old image
     path = f"{user.id}/{uuid.uuid4().hex}.{ext}"
+    previous_url = getattr(user, column, None)
 
     try:
         supabase.storage.from_(bucket).upload(
             path, contents, {"content-type": file.content_type, "upsert": "true"}
         )
         public_url = supabase.storage.from_(bucket).get_public_url(path)
+
+        # Clean up the old file now that the new one is safely uploaded —
+        # done after a successful upload so a failed upload never destroys
+        # a perfectly good existing image.
+        try:
+            _delete_stored_object(bucket, previous_url)
+        except Exception:
+            # Non-fatal: the new image is live either way, just leaves an
+            # orphaned old file this one time rather than failing the request.
+            pass
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
 
@@ -83,12 +107,7 @@ async def _handle_remove(kind: str, user: User, db: Session):
     current_url = getattr(user, column, None)
 
     try:
-        if current_url:
-            # Public URLs look like: {SUPABASE_URL}/storage/v1/object/public/{bucket}/{path}
-            marker = f"/{bucket}/"
-            if marker in current_url:
-                object_path = current_url.split(marker, 1)[1]
-                supabase.storage.from_(bucket).remove([object_path])
+        _delete_stored_object(bucket, current_url)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Removal failed: {e}")
 
