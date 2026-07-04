@@ -1090,8 +1090,9 @@ export default function HomePage() {
                     const url=trendCovers[game.rawgSlug]||game.imageUrl
                     return(
                       <div key={game.id}
-                        style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:12,cursor:'pointer',
-                          background:t.card,border:`1px solid ${t.border}`,transition:'border-color 0.15s,background 0.15s'}}
+                        style={{display:'flex',alignItems:'center',gap: isMobile?8:10,padding: isMobile?'10px 12px':'10px 14px',borderRadius:12,cursor:'pointer',
+                          background:t.card,border:`1px solid ${t.border}`,transition:'border-color 0.15s,background 0.15s',
+                          maxWidth:'100%',boxSizing:'border-box',flexWrap: isMobile?'wrap':'nowrap'}}
                         onMouseEnter={e=>{e.currentTarget.style.borderColor=t.borderHover;e.currentTarget.style.background=t.cardHover}}
                         onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.background=t.card}}
                         onClick={()=>openTrailer(game,url)}>
@@ -1099,18 +1100,21 @@ export default function HomePage() {
                         <div style={{width:38,height:38,borderRadius:8,overflow:'hidden',flexShrink:0,background:t.surface}}>
                           {url?<img src={url} alt={game.title} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:null}
                         </div>
-                        <div style={{flex:1,minWidth:0}}>
+                        <div style={{flex:1,minWidth: isMobile?100:0}}>
                           <p className="tnr" style={{fontSize:12,fontWeight:700,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{game.title}</p>
                           <p style={{fontSize:10,color:t.textMuted,marginTop:2}}>{game.players} ratings</p>
                         </div>
-                        <span style={{fontSize:10,fontWeight:700,padding:'3px 7px',borderRadius:6,background:'#22c55e18',color:'#22c55e',flexShrink:0}}>
-                          +{Math.floor(Math.random()*18)+2}%
-                        </span>
+                        {!isMobile&&(
+                          <span style={{fontSize:10,fontWeight:700,padding:'3px 7px',borderRadius:6,background:'#22c55e18',color:'#22c55e',flexShrink:0}}>
+                            +{Math.floor(Math.random()*18)+2}%
+                          </span>
+                        )}
                         <AddButton game={game} coverUrl={url} t={t}
                           style={{fontSize:10,fontWeight:700,padding:'5px 10px',borderRadius:8,transition:'all 0.15s',flexShrink:0,
                             background:t.surface,color:t.textSub,border:`1px solid ${t.border}`,cursor:'pointer'}}
                           label="+ Add" addedLabel="✓"/>
                       </div>
+
                     )
                   })
               }
@@ -1134,21 +1138,24 @@ export default function HomePage() {
                     const match=`${Math.floor(Math.random()*12)+87}%`
                     return(
                       <div key={game.id}
-                        style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:12,cursor:'pointer',
-                          background:t.card,border:`1px solid ${t.border}`,transition:'border-color 0.15s,background 0.15s'}}
+                        style={{display:'flex',alignItems:'center',gap: isMobile?8:10,padding: isMobile?'10px 12px':'10px 14px',borderRadius:12,cursor:'pointer',
+                          background:t.card,border:`1px solid ${t.border}`,transition:'border-color 0.15s,background 0.15s',
+                          maxWidth:'100%',boxSizing:'border-box',flexWrap: isMobile?'wrap':'nowrap'}}
                         onMouseEnter={e=>{e.currentTarget.style.borderColor=t.borderHover;e.currentTarget.style.background=t.cardHover}}
                         onMouseLeave={e=>{e.currentTarget.style.borderColor=t.border;e.currentTarget.style.background=t.card}}
                         onClick={()=>openTrailer(game,url)}>
                         <div style={{width:38,height:38,borderRadius:8,overflow:'hidden',flexShrink:0,background:t.surface}}>
                           {url?<img src={url} alt={game.title} style={{width:'100%',height:'100%',objectFit:'cover'}}/>:null}
                         </div>
-                        <div style={{flex:1,minWidth:0}}>
+                        <div style={{flex:1,minWidth: isMobile?100:0}}>
                           <p className="tnr" style={{fontSize:12,fontWeight:700,color:t.text,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{game.title}</p>
                           <p style={{fontSize:10,color:t.textMuted,marginTop:2}}>{game.genre?.split('/')[0]?.trim()}</p>
                         </div>
-                        <span style={{fontSize:10,fontWeight:700,padding:'3px 7px',borderRadius:6,background:t.accentGlow,color:t.accent,flexShrink:0}}>
-                          {match}
-                        </span>
+                        {!isMobile&&(
+                          <span style={{fontSize:10,fontWeight:700,padding:'3px 7px',borderRadius:6,background:t.accentGlow,color:t.accent,flexShrink:0}}>
+                            {match}
+                          </span>
+                        )}
                         <AddButton game={game} coverUrl={url} t={t}
                           style={{fontSize:10,fontWeight:700,padding:'5px 10px',borderRadius:8,transition:'all 0.15s',flexShrink:0,
                             background:t.surface,color:t.textSub,border:`1px solid ${t.border}`,cursor:'pointer'}}

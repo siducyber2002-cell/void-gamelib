@@ -881,7 +881,7 @@ export default function FriendsPage() {
                 <p style={{ fontSize: 20, fontWeight: 800, color: txtPri, marginBottom: 8 }}>No friends yet</p>
                 <p style={{ color: txtSec }}>Use "Find People" to grow your squad</p>
               </div>
-            : <div style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: 20 }}>
+            : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: isMobile ? 12 : 20, width: '100%', maxWidth: '100%' }}>
                 {filteredFriends.map(f => <FriendCard key={f.id} friend={f} />)}
               </div>
         )}
@@ -978,7 +978,7 @@ export default function FriendsPage() {
                 <p style={{ fontWeight: 800, color: txtPri, marginBottom: 8 }}>Nobody online right now</p>
                 <p style={{ color: txtSec, fontSize: 13 }}>Your friends will appear here when active</p>
               </div>
-            : <div style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: 20 }}>
+            : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: isMobile ? 12 : 20, width: '100%', maxWidth: '100%' }}>
                 {friendPartners.filter(f => f.online).map(f => (
                   <div
                     key={f.id}
