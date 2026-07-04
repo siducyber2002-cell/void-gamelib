@@ -87,6 +87,7 @@ class UserPublic(BaseModel):
     username:      str
     bio:           Optional[str] = ""
     avatar_url:    Optional[str] = ""
+    banner_url:    Optional[str] = ""
     country:       Optional[str] = ""
     favorite_game: Optional[str] = ""
     level:         int
