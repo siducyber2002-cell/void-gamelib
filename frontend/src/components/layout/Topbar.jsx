@@ -392,10 +392,15 @@ function NotificationBell({ dark }) {
         <Bell size={15} style={{ color: unread > 0 ? accent : textMut }} />
         {unread > 0 && (
           <span style={{
-            position: 'absolute', top: 5, right: 5, width: 7, height: 7,
-            borderRadius: '50%', background: '#ef4444',
+            position: 'absolute', top: -4, right: -4,
+            minWidth: 16, height: 16, padding: '0 3px',
+            borderRadius: 999, background: '#ef4444',
             border: `2px solid ${dark ? '#07070e' : '#faf8ff'}`,
-          }} />
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 9, fontWeight: 800, lineHeight: 1, color: '#fff',
+            fontFamily: "'Share Tech Mono', monospace",
+            boxShadow: '0 0 6px rgba(239,68,68,0.6)',
+          }}>{unread > 9 ? '9+' : unread}</span>
         )}
       </button>
 
@@ -529,11 +534,11 @@ const TOPBAR_STYLE = (dark) => `
 
   .og-topbar {
     position: sticky; top: 0; z-index: 10;
-    width: 100%; height: 54px;
+    width: 100%; height: 60px;
     background: ${dark ? '#07070e' : '#faf8ff'};
     border-bottom: 1px solid ${dark ? '#1a1a30' : '#e2dcf5'};
     display: flex; align-items: center; justify-content: space-between;
-    padding: 0 20px; overflow: hidden;
+    padding: 0 28px; overflow: hidden;
     box-shadow: ${dark ? '0 0 40px rgba(168,85,247,0.06)' : '0 1px 12px rgba(124,58,237,0.06)'};
     transition: background 0.3s, border-color 0.3s;
   }
@@ -628,7 +633,7 @@ const TOPBAR_STYLE = (dark) => `
 
   /* ── Mobile fit ── */
   @media (max-width: 640px) {
-    .og-topbar { padding: 0 10px; }
+    .og-topbar { padding: 0 14px; }
     .og-ticker-wrap { display: none; }
     .og-divider { display: none; }
     .og-username { display: none; }

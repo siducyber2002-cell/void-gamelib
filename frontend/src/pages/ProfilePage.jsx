@@ -1,12 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import {
-  Edit3, MapPin, Star, Check, X,
+  Edit3, MapPin, Star, Check, X, Camera, Loader2, Upload, Trash2,
   Gamepad2, Trophy, Users, Zap, Clock, Plus, Play, Newspaper,
 } from 'lucide-react'
+
+// Image upload constraints — adjust freely
+const MAX_IMAGE_MB = 5
+const MAX_IMAGE_BYTES = MAX_IMAGE_MB * 1024 * 1024
+const ACCEPTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']
+const ACCEPTED_IMAGE_ACCEPT = ACCEPTED_IMAGE_TYPES.join(',')
 
 // Action → icon + colour + label
 const ACTION_META = {
@@ -48,6 +54,114 @@ export default function ProfilePage() {
     country:       user?.country       || '',
     favorite_game: user?.favorite_game || '',
   })
+
+  // Avatar / cover photo state
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || null)
+  const [coverUrl, setCoverUrl]   = useState(user?.cover_url  || null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [coverUploading, setCoverUploading]   = useState(false)
+  const avatarInputRef = useRef(null)
+  const coverInputRef  = useRef(null)
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
+  const [coverMenuOpen, setCoverMenuOpen]   = useState(false)
+
+  const validateImage = (file) => {
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      toast.error('Please upload a PNG, JPG, WEBP or GIF image')
+      return false
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      toast.error(`Image must be under ${MAX_IMAGE_MB}MB`)
+      return false
+    }
+    return true
+  }
+
+  const handleImageUpload = async (e, kind) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!validateImage(file)) { e.target.value = ''; return }
+
+    const isAvatar     = kind === 'avatar'
+    const setUrl        = isAvatar ? setAvatarUrl : setCoverUrl
+    const setUploading  = isAvatar ? setAvatarUploading : setCoverUploading
+    const previousUrl   = isAvatar ? avatarUrl : coverUrl
+    const previewUrl    = URL.createObjectURL(file)
+
+    setUrl(previewUrl)
+    setUploading(true)
+
+    try {
+      const formData = new FormData()
+      formData.append(kind, file)
+      const { data } = await axios.post(`/api/profile/${kind}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setUrl(data?.[`${kind}_url`] || previewUrl)
+      toast.success(isAvatar ? 'Profile picture updated!' : 'Cover photo updated!')
+    } catch (err) {
+      console.error(`${kind} upload failed:`, err)
+      setUrl(previousUrl)
+      toast.error(`Failed to upload ${isAvatar ? 'profile picture' : 'cover photo'}`)
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleRemoveImage = async (kind) => {
+    const isAvatar = kind === 'avatar'
+    const setUrl = isAvatar ? setAvatarUrl : setCoverUrl
+    const previousUrl = isAvatar ? avatarUrl : coverUrl
+    if (!previousUrl) return
+
+    setUrl(null)
+    try {
+      await axios.delete(`/api/profile/${kind}`)
+      toast.success(isAvatar ? 'Profile picture removed' : 'Cover photo removed')
+    } catch (err) {
+      console.error(`${kind} removal failed:`, err)
+      setUrl(previousUrl)
+      toast.error(`Failed to remove ${isAvatar ? 'profile picture' : 'cover photo'}`)
+    }
+  }
+
+  // Small "Upload new / Remove" dropdown shared by both avatar and cover controls
+  const renderImageMenu = (kind) => {
+    const isOpen = kind === 'avatar' ? avatarMenuOpen : coverMenuOpen
+    if (!isOpen) return null
+    const isAvatar = kind === 'avatar'
+    const close = () => (isAvatar ? setAvatarMenuOpen(false) : setCoverMenuOpen(false))
+    const hasImage = isAvatar ? !!avatarUrl : !!coverUrl
+    const inputRef = isAvatar ? avatarInputRef : coverInputRef
+
+    return (
+      <>
+        <div className="fixed inset-0 z-40" onClick={close} />
+        <div
+          className="absolute z-50 bottom-full mb-2 right-0 w-44 rounded-xl overflow-hidden py-1"
+          style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}
+        >
+          <button
+            onClick={() => { inputRef.current?.click(); close() }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-left transition-colors hover:opacity-70"
+            style={{ color: textPrimary }}
+          >
+            <Upload size={13} /> Upload new photo
+          </button>
+          {hasImage && (
+            <button
+              onClick={() => { handleRemoveImage(kind); close() }}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-left transition-colors hover:opacity-70"
+              style={{ color: '#ef4444' }}
+            >
+              <Trash2 size={13} /> Remove {isAvatar ? 'photo' : 'cover'}
+            </button>
+          )}
+        </div>
+      </>
+    )
+  }
 
   // Real data state
   const [xpStats, setXpStats]       = useState({ level: user?.level || 1, xp: user?.xp || 0, xp_to_next: 100, xp_percent: 0 })
@@ -144,26 +258,105 @@ export default function ProfilePage() {
         <div className="rounded-2xl overflow-hidden"
           style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}>
 
-          {/* Banner */}
-          <div className="h-40 relative"
+          {/* Banner / cover photo */}
+          <div className="h-40 sm:h-48 relative group overflow-hidden"
             style={{ background: `linear-gradient(135deg, ${accent}40, #8b5cf640, #f43f5e28)` }}>
-            <div className="absolute inset-0 opacity-10"
-              style={{ backgroundImage: `radial-gradient(circle, ${accent} 1px, transparent 1px)`, backgroundSize: '28px 28px' }} />
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 60%, rgba(0,0,0,0.3))' }} />
+
+            {coverUrl && (
+              <img src={coverUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+            )}
+
+            {!coverUrl && (
+              <div className="absolute inset-0 opacity-10"
+                style={{ backgroundImage: `radial-gradient(circle, ${accent} 1px, transparent 1px)`, backgroundSize: '28px 28px' }} />
+            )}
+
+            {/* Faint watermark typography — sits above cover art or gradient alike */}
+            <div className="absolute inset-0 flex items-center overflow-hidden pointer-events-none select-none">
+              <span
+                className="whitespace-nowrap font-black"
+                style={{
+                  fontSize: 'clamp(56px, 11vw, 130px)',
+                  color: '#fff',
+                  opacity: 0.16,
+                  mixBlendMode: 'overlay',
+                  letterSpacing: '-0.04em',
+                  transform: 'translateX(-2%)',
+                }}
+              >
+                {(form.username || user?.username || 'PLAYER').toUpperCase()}
+              </span>
+            </div>
+
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, transparent 55%, rgba(0,0,0,0.35))' }} />
+
+            {/* Cover photo options */}
+            <div className="absolute bottom-3 right-3">
+              <button
+                onClick={() => setCoverMenuOpen(v => !v)}
+                disabled={coverUploading}
+                className="relative z-50 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all opacity-90 hover:opacity-100 hover:scale-[1.03] backdrop-blur-sm"
+                style={{ background: 'rgba(0,0,0,0.55)', color: '#fff' }}
+              >
+                {coverUploading
+                  ? <Loader2 size={13} className="animate-spin" />
+                  : <Camera size={13} />}
+                {coverUploading ? 'Uploading…' : (coverUrl ? 'Edit cover' : 'Add cover')}
+              </button>
+              {renderImageMenu('cover')}
+            </div>
+            <input
+              ref={coverInputRef} type="file" accept={ACCEPTED_IMAGE_ACCEPT}
+              className="hidden" onChange={e => handleImageUpload(e, 'cover')}
+            />
           </div>
 
           <div className="px-4 sm:px-6 pb-6 relative">
             {/* Avatar + actions row */}
             <div className="flex items-end justify-between -mt-10 mb-4">
-              <div className="relative w-20 h-20 flex items-center justify-center">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center group/avatar">
                 <span className="absolute inset-0 rounded-2xl avatar-ring"       style={{ background: accent + '30' }} />
                 <span className="absolute inset-0 rounded-2xl avatar-ring-delay" style={{ background: accent + '30' }} />
                 <div
-                  className="relative w-20 h-20 rounded-2xl flex items-center justify-center text-white text-3xl font-black"
+                  onClick={() => setAvatarMenuOpen(v => !v)}
+                  className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden flex items-center justify-center text-white text-3xl font-black cursor-pointer"
                   style={{ background: `linear-gradient(135deg, ${accent}, #7c3aed)`, boxShadow: `0 0 0 4px ${cardBg}, 0 8px 24px ${accent}55` }}
                 >
-                  {(editing ? form.username : user?.username)?.[0]?.toUpperCase() || 'G'}
+                  {avatarUrl
+                    ? <img src={avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+                    : (editing ? form.username : user?.username)?.[0]?.toUpperCase() || 'G'}
+
+                  {/* Hover dim + camera prompt (desktop) */}
+                  <div
+                    className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity"
+                    style={{ background: 'rgba(0,0,0,0.5)' }}
+                  >
+                    {avatarUploading
+                      ? <Loader2 size={20} color="#fff" className="animate-spin" />
+                      : <Camera size={20} color="#fff" />}
+                  </div>
                 </div>
+
+                {/* Always-visible edit badge, for touch devices */}
+                <div className="absolute -bottom-1 -right-1">
+                  <button
+                    onClick={() => setAvatarMenuOpen(v => !v)}
+                    disabled={avatarUploading}
+                    className="relative z-50 w-7 h-7 rounded-full flex items-center justify-center transition-transform hover:scale-110"
+                    style={{ background: accent, border: `2px solid ${cardBg}`, boxShadow: `0 2px 8px ${accent}66` }}
+                    aria-label="Change profile picture"
+                  >
+                    {avatarUploading
+                      ? <Loader2 size={11} color="#fff" className="animate-spin" />
+                      : <Camera size={11} color="#fff" />}
+                  </button>
+                  {renderImageMenu('avatar')}
+                </div>
+
+                <input
+                  ref={avatarInputRef} type="file" accept={ACCEPTED_IMAGE_ACCEPT}
+                  className="hidden" onChange={e => handleImageUpload(e, 'avatar')}
+                />
               </div>
 
               {!editing ? (
@@ -187,6 +380,10 @@ export default function ProfilePage() {
                 </div>
               )}
             </div>
+
+            <p className="text-[10px] font-semibold mb-3 -mt-2" style={{ color: textSub }}>
+              PNG, JPG, WEBP or GIF · up to {MAX_IMAGE_MB}MB
+            </p>
 
             {/* Username */}
             {editing
@@ -263,7 +460,7 @@ export default function ProfilePage() {
         {/* ── Stats ── */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {STATS.map(stat => (
-            <div key={stat.label} className="rounded-2xl p-3 sm:p-4 text-center flex flex-col items-center gap-1.5"
+            <div key={stat.label} className="rounded-2xl p-3 sm:p-4 text-center flex flex-col items-center gap-1.5 transition-all duration-200 hover:-translate-y-1 cursor-default"
               style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-0.5"
                 style={{ background: stat.color + '18' }}>

@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { X, Send, Minimize2, Maximize2, Circle, Loader2, Smile, MoreVertical, Trash2, Check, CheckCheck, Clock } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { X, Send, Minimize2, Maximize2, Circle, Loader2, Smile, MoreVertical, Trash2, Ban, UserX, Check, CheckCheck, Clock } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
 import axios from 'axios'
@@ -54,19 +54,27 @@ function MessageBubble({ msg, isSelf, showAvatar, friend, accentColors, isDark, 
 
       <div className={`max-w-[70%] flex flex-col gap-1 ${isSelf ? 'items-end' : 'items-start'}`}>
         <div
-          className="px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed break-words"
-          style={isSelf
-            ? { background: `linear-gradient(135deg, ${accentColors.primary}, #8b5cf6)`, color: 'white', borderBottomRightRadius: '4px' }
-            : {
-                background: isDark ? '#374151' : '#f1f5f9',
-                color: isDark ? '#f3f4f6' : '#0f172a',
-                borderBottomLeftRadius: '4px'
-              }
-          }
+          className="px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed"
+          style={{
+            // whiteSpace: pre-wrap — this was the "text format" bug. The
+            // textarea supports Shift+Enter for a new line, but plain text
+            // in a div collapses newlines by default, so multi-line
+            // messages silently rendered as one squashed line. pre-wrap
+            // keeps the line breaks (and still wraps long words).
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            ...(isSelf
+              ? { background: `linear-gradient(135deg, ${accentColors.primary}, #8b5cf6)`, color: 'white', borderBottomRightRadius: '4px' }
+              : {
+                  background: isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6',
+                  color: isDark ? '#eae8ff' : '#0f0f1f',
+                  borderBottomLeftRadius: '4px'
+                }),
+          }}
         >
           {msg.content}
         </div>
-        <span className={`text-xs px-1 flex items-center gap-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+        <span className={`text-xs px-1 flex items-center gap-1 ${isDark ? 'text-[#8c8aaa]' : 'text-[#6b7280]'}`}>
           {formatTime(msg.created_at)}
           {/* Read receipt — WhatsApp-style: only shown on the most recent
               message you sent, not on every bubble (too noisy otherwise). */}
@@ -79,7 +87,7 @@ function MessageBubble({ msg, isSelf, showAvatar, friend, accentColors, isDark, 
           )}
         </span>
         {isSelf && showStatus && (
-          <span className={`text-[10px] px-1 -mt-1 ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+          <span className={`text-[10px] px-1 -mt-1 ${isDark ? 'text-[#8c8aaa]' : 'text-[#6b7280]'}`}>
             {msg.optimistic ? 'Sending…' : (msg.is_read ? 'Seen' : 'Sent')}
           </span>
         )}
@@ -89,7 +97,16 @@ function MessageBubble({ msg, isSelf, showAvatar, friend, accentColors, isDark, 
 }
 
 // onNewMessage(senderName) — called when a message arrives from the friend
-export default function DMChatPanel({ friend, onClose, onNewMessage }) {
+// onRequestRemove(friend) / onRequestBlock(friend) — delegate up to the
+//   Friends page's own remove/block handlers, so an action taken from
+//   inside the chat panel goes through the exact same confirmation +
+//   state update as the Friends grid. Keeps the two views in sync instead
+//   of the panel quietly having its own separate copy of this logic.
+// requestConfirm(config) — the Friends page's confirm-modal setter, reused
+//   here for "Clear chat" so every destructive action in the app (remove,
+//   block, decline, clear chat) shares one modal instead of this panel
+//   falling back to a native window.confirm().
+export default function DMChatPanel({ friend, onClose, onNewMessage, onRequestRemove, onRequestBlock, requestConfirm }) {
   const { user } = useAuth()
   const { dark: isDark } = useTheme()
   const accentColors = { primary: '#a855f7', secondary: '#7c3aed' }
@@ -124,26 +141,30 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
   const roomId = getRoomId(user?.id, friend?.id)
   const token  = localStorage.getItem('gl_token')
 
-  // ── theme shortcuts ───────────────────────────────────────
-  const panelBg          = isDark ? '#111827' : 'white'
+  // ── theme tokens ──────────────────────────────────────────
+  // Matched directly to FriendsPage's palette (bgCard / borderClr / txtPri
+  // etc.) so the panel reads as part of the same surface instead of a
+  // visually separate widget bolted onto the page.
+  const panelBg          = isDark ? '#13131f' : '#ffffff'
   const headerBg         = isDark
     ? `linear-gradient(135deg, ${accentColors.primary}20, #8b5cf620)`
     : `linear-gradient(135deg, ${accentColors.primary}15, #8b5cf615)`
-  const borderColor      = isDark ? '#374151' : '#e2e8f0'
-  const msgAreaBg        = isDark ? '#0f172a' : '#f8fafc'
-  const inputAreaBg      = isDark ? '#111827' : 'white'
-  const inputBg          = isDark ? '#1f2937' : '#f1f5f9'
-  const inputText        = isDark ? '#f3f4f6' : '#1e293b'
+  const borderColor      = isDark ? 'rgba(255,255,255,0.08)' : '#e8e8f0'
+  const msgAreaBg        = isDark ? '#0b0b14' : '#f4f4f8'
+  const inputAreaBg      = panelBg
+  const inputBg          = isDark ? '#1a1a2a' : '#ffffff'
+  const inputText        = isDark ? '#eae8ff' : '#0f0f1f'
   const inputPlaceholder = isDark ? 'placeholder-gray-500' : 'placeholder-slate-400'
-  const inputFocus       = isDark ? 'focus:border-purple-500' : 'focus:border-blue-300'
-  const textPrimary      = isDark ? 'text-gray-100' : 'text-slate-900'
-  const textMuted        = isDark ? 'text-gray-500' : 'text-slate-400'
-  const dividerBg        = isDark ? 'bg-gray-700' : 'bg-slate-200'
-  const typingBg         = isDark ? 'bg-gray-700' : 'bg-slate-200'
+  const inputFocus       = 'focus:border-purple-500'
+  const textPrimary      = isDark ? 'text-[#eae8ff]' : 'text-[#0f0f1f]'
+  const textMuted        = isDark ? 'text-[#8c8aaa]' : 'text-[#6b7280]'
+  const dividerBg        = isDark ? 'bg-white/10' : 'bg-slate-200'
+  const typingBg         = isDark ? 'bg-white/10' : 'bg-slate-200'
   const typingDot        = isDark ? 'bg-gray-400' : 'bg-slate-400'
-  const minimizeBtnHover = isDark ? 'hover:bg-gray-700' : 'hover:bg-slate-100'
+  const minimizeBtnHover = isDark ? 'hover:bg-purple-500/10' : 'hover:bg-purple-50'
   const closeBtnHover    = isDark ? 'hover:bg-red-500/20 hover:text-red-400' : 'hover:bg-red-50 hover:text-red-500'
-  const iconColor        = isDark ? 'text-gray-400' : 'text-slate-400'
+  const dangerHover      = isDark ? 'hover:bg-red-500/10' : 'hover:bg-red-50'
+  const iconColor        = isDark ? 'text-[#8c8aaa]' : 'text-[#6b7280]'
 
   // ── Load message history ──────────────────────────────────
   const loadHistory = useCallback(async () => {
@@ -330,11 +351,8 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
     }
   }
 
-  const clearChat = async () => {
-    if (!window.confirm(`Clear all messages with ${friend.username}? This deletes them permanently for both of you and can't be undone.`)) {
-      setShowMenu(false)
-      return
-    }
+  // The actual delete — separated from the confirmation trigger below.
+  const doClearChat = async () => {
     try {
       setClearing(true)
       await axios.delete(`/api/dm/clear/${friend.id}`)
@@ -343,8 +361,21 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
       // leave messages as-is if the delete failed server-side
     } finally {
       setClearing(false)
-      setShowMenu(false)
     }
+  }
+
+  // Routes through the Friends page's shared confirm modal instead of
+  // window.confirm — same look, same behavior as remove/block/decline
+  // everywhere else in the app.
+  const clearChat = () => {
+    setShowMenu(false)
+    requestConfirm?.({
+      title: 'Clear chat?',
+      message: `All messages with ${friend.username} will be permanently deleted for both of you. This can't be undone.`,
+      confirmLabel: 'Clear chat',
+      danger: true,
+      onConfirm: doClearChat,
+    })
   }
 
   // Close the options menu on outside click
@@ -404,16 +435,23 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
     }
   }
 
-  const grouped = messages.reduce((acc, msg) => {
+  // useMemo: grouping/scanning the full message list on every render
+  // (including renders triggered by unrelated state like isTyping or
+  // showEmoji) is wasted work once history gets long. Only recompute when
+  // the messages actually change.
+  const grouped = useMemo(() => messages.reduce((acc, msg) => {
     const label = formatDateLabel(msg.created_at)
     if (!acc[label]) acc[label] = []
     acc[label].push(msg)
     return acc
-  }, {})
+  }, {}), [messages])
 
   // WhatsApp-style: only the most recent message *you* sent shows a
   // Sent/Seen status — showing it on every bubble is noisy and redundant.
-  const lastSelfMsgId = [...messages].reverse().find(m => m.sender_id === user?.id)?.id
+  const lastSelfMsgId = useMemo(
+    () => [...messages].reverse().find(m => m.sender_id === user?.id)?.id,
+    [messages, user?.id]
+  )
 
   return (
     <>
@@ -426,12 +464,16 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
       {/* Panel */}
       <div
         className={`
-          fixed right-0 top-0 h-full z-40 flex flex-col shadow-2xl
+          fixed right-0 top-0 h-full z-40 flex flex-col
           transition-all duration-300 ease-in-out
           w-full sm:w-96
           ${minimized ? 'translate-y-[calc(100%-56px)]' : 'translate-y-0'}
         `}
-        style={{ background: panelBg, borderLeft: `1px solid ${borderColor}` }}
+        style={{
+          background: panelBg,
+          borderLeft: `1px solid ${borderColor}`,
+          boxShadow: isDark ? '-12px 0 50px rgba(0,0,0,0.5)' : '-12px 0 40px rgba(0,0,0,0.08)',
+        }}
       >
         {/* Header */}
         <div
@@ -455,15 +497,15 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
               size={10}
               className="absolute -bottom-0.5 -right-0.5"
               style={{
-                fill: friend.online ? '#34d399' : '#9ca3af',
-                color: friend.online ? '#34d399' : '#9ca3af',
+                fill: friend.online ? '#22c55e' : '#9ca3af',
+                color: friend.online ? '#22c55e' : '#9ca3af',
               }}
             />
           </div>
 
           <div className="flex-1 min-w-0">
             <p className={`font-display font-bold text-sm truncate ${textPrimary}`}>{friend.username}</p>
-            <p className="text-xs font-semibold" style={{ color: !wsReady ? '#94a3b8' : (friend.online ? '#10b981' : '#9ca3af') }}>
+            <p className="text-xs font-semibold" style={{ color: !wsReady ? '#94a3b8' : (friend.online ? '#22c55e' : '#9ca3af') }}>
               {!wsReady ? 'Connecting...' : (friend.online ? 'Online' : 'Offline')}
             </p>
           </div>
@@ -482,16 +524,35 @@ export default function DMChatPanel({ friend, onClose, onNewMessage }) {
               <div
                 ref={menuRef}
                 className="absolute top-full right-0 mt-1 rounded-xl shadow-2xl overflow-hidden z-20"
-                style={{ width: 180, background: panelBg, border: `1px solid ${borderColor}` }}
+                style={{ width: 200, background: panelBg, border: `1px solid ${borderColor}` }}
               >
                 <button
                   onClick={clearChat}
                   disabled={clearing || messages.length === 0}
-                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${isDark ? 'hover:bg-red-500/10' : 'hover:bg-red-50'}`}
+                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${dangerHover}`}
                   style={{ color: '#ef4444' }}
                 >
                   {clearing ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
                   Clear chat
+                </button>
+                {/* Same remove/block flow as the Friends grid — delegated
+                    up to the page so both surfaces stay in sync instead of
+                    the panel keeping its own copy of this logic. */}
+                <button
+                  onClick={() => { setShowMenu(false); onRequestBlock?.(friend) }}
+                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors ${dangerHover}`}
+                  style={{ color: '#ef4444', borderTop: `1px solid ${borderColor}` }}
+                >
+                  <Ban size={15} />
+                  Block user
+                </button>
+                <button
+                  onClick={() => { setShowMenu(false); onRequestRemove?.(friend) }}
+                  className={`w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors ${minimizeBtnHover}`}
+                  style={{ color: isDark ? '#8c8aaa' : '#6b7280', borderTop: `1px solid ${borderColor}` }}
+                >
+                  <UserX size={15} />
+                  Remove friend
                 </button>
               </div>
             )}

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Gamepad2, Users, CheckCircle, PlayCircle,
-  Bookmark, Heart, TrendingUp, Activity, Plus, UserPlus, LayoutDashboard, Flame
+  Bookmark, Heart, TrendingUp, Activity, Plus, UserPlus, LayoutDashboard, Flame,
+  ChevronLeft, ChevronRight
 } from 'lucide-react'
 import axios from 'axios'
 import { useTheme } from '../context/ThemeContext'
@@ -680,31 +681,44 @@ function useCountUpNeon(target, duration, delay) {
   return val
 }
 
-function SwordIcon({ size = 22 }) {
+function SwordIcon({ size = 22, color = '#a855f7' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 28 28" fill="none">
-      <path d="M20 4L24 8L12 20L8 24L4 24L4 20L16 8L20 4Z" stroke="#00f5ff" strokeWidth={1.5} strokeLinejoin="round" fill="#00f5ff18" />
-      <path d="M18 6L22 10" stroke="#00f5ff" strokeWidth={1.5} strokeLinecap="round" />
-      <path d="M4 22L6 20" stroke="#00f5ff" strokeWidth={2} strokeLinecap="round" />
+      <path d="M20 4L24 8L12 20L8 24L4 24L4 20L16 8L20 4Z" stroke={color} strokeWidth={1.5} strokeLinejoin="round" fill={color + '18'} />
+      <path d="M18 6L22 10" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
+      <path d="M4 22L6 20" stroke={color} strokeWidth={2} strokeLinecap="round" />
     </svg>
   )
 }
 
 function LoginStreakWidget({ streak, longest, history, user }) {
-  const [gridVisible, setGridVisible] = useState(false)
+  const [gridVisible, setGridVisible] = useState(true)
+  const [slideDir, setSlideDir] = useState(1) // 1 = forward/right, -1 = back/left
   const today = useMemo(() => new Date(), [])
   const historySet = useMemo(() => new Set(history || []), [history])
   const streakCount = useCountUpNeon(streak, 800, 200)
 
-  useEffect(() => {
-    const t = setTimeout(() => setGridVisible(true), 150)
-    return () => clearTimeout(t)
-  }, [])
+  // The month/year currently displayed — independent of "today" so the
+  // right/left arrows can page through months (and roll over into
+  // neighbouring years) without touching the real streak calculation.
+  const [viewDate, setViewDate] = useState(() => new Date(today.getFullYear(), today.getMonth(), 1))
 
-  // Current-month calendar — day numbers always show, regardless of whether
-  // that day has login history yet (fixes "why are all the cells blank").
-  const year  = today.getFullYear()
-  const month = today.getMonth()
+  const goMonth = (delta) => {
+    setSlideDir(delta > 0 ? 1 : -1)
+    setGridVisible(false)
+    setViewDate(prev => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
+  }
+
+  // Re-trigger the pop-in whenever the viewed month changes.
+  useEffect(() => {
+    const t = setTimeout(() => setGridVisible(true), 30)
+    return () => clearTimeout(t)
+  }, [viewDate])
+
+  // Calendar grid for whichever month/year is currently in view — day
+  // numbers always show, regardless of whether that day has login history.
+  const year  = viewDate.getFullYear()
+  const month = viewDate.getMonth()
   const firstOfMonth = new Date(year, month, 1)
   const startOffset  = (firstOfMonth.getDay() + 6) % 7 // Monday-first
   const daysInMonth  = new Date(year, month + 1, 0).getDate()
@@ -712,7 +726,8 @@ function LoginStreakWidget({ streak, longest, history, user }) {
   for (let i = 0; i < startOffset; i++) cells.push(null)
   for (let d = 1; d <= daysInMonth; d++) cells.push(d)
   const todayKey   = localDateKey(today)
-  const monthLabel = today.toLocaleDateString('en', { month: 'short' })
+  const monthLabel = viewDate.toLocaleDateString('en', { month: 'short' })
+  const isCurrentMonth = year === today.getFullYear() && month === today.getMonth()
 
   // Badges stay tied to the streak logic — no separate achievements endpoint.
   const achievements = useMemo(() => ([
@@ -721,31 +736,35 @@ function LoginStreakWidget({ streak, longest, history, user }) {
     { icon: '💎', label: '100-Day', unlocked: longest >= 100 },
   ]), [longest])
 
-  const neon   = '#00f5ff'
-  const purple = '#bf5fff'
+  // Purple palette pulled from the dashboard's own accent colors, so the
+  // widget reads as part of the same design system instead of a standalone
+  // neon-cyan card.
+  const glow    = ACCENT   // #a855f7
+  const glow2   = ACCENT2  // #7c3aed
   const playerName = (user?.username || 'player').toUpperCase()
   const level = user?.level ?? 1
 
   return (
     <div style={{
-      background: '#06060f', border: `1px solid ${neon}25`, borderRadius: 20,
+      background: 'linear-gradient(160deg, #150f28 0%, #0c0818 60%, #0a0714 100%)',
+      border: `1px solid ${glow}30`, borderRadius: 20,
       padding: 18, display: 'flex', flexDirection: 'column', gap: 12,
       position: 'relative', overflow: 'hidden', height: '100%',
-      boxShadow: `0 0 24px ${neon}08, inset 0 0 24px ${purple}05`,
+      boxShadow: `0 0 24px ${glow}10, inset 0 0 30px ${glow2}0c`,
       fontFamily: "'DM Mono', monospace",
     }}>
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${neon}, ${purple}, transparent)` }} />
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${glow}, ${glow2}, transparent)` }} />
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <SwordIcon />
+          <SwordIcon color={glow} />
           <div>
-            <p style={{ fontSize: 9, color: neon, letterSpacing: '0.15em', textTransform: 'uppercase', margin: 0, opacity: 0.7 }}>Daily Login</p>
+            <p style={{ fontSize: 9, color: glow, letterSpacing: '0.15em', textTransform: 'uppercase', margin: 0, opacity: 0.8 }}>Daily Login</p>
             <p style={{ fontSize: 11, color: '#f0f0f4', margin: 0, fontFamily: "'DM Sans', sans-serif", fontWeight: 600 }}>{playerName}</p>
           </div>
         </div>
-        <div style={{ background: `${purple}20`, border: `1px solid ${purple}50`, borderRadius: 4, padding: '3px 7px', fontSize: 9.5, color: purple, letterSpacing: '0.08em', flexShrink: 0 }}>
+        <div style={{ background: `${glow2}25`, border: `1px solid ${glow2}55`, borderRadius: 4, padding: '3px 7px', fontSize: 9.5, color: '#d3b3ff', letterSpacing: '0.08em', flexShrink: 0 }}>
           LVL {level}
         </div>
       </div>
@@ -753,24 +772,49 @@ function LoginStreakWidget({ streak, longest, history, user }) {
       {/* Streak number */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
         <span style={{
-          fontSize: '2.5rem', fontWeight: 700, color: neon, lineHeight: 1,
-          textShadow: `0 0 16px ${neon}, 0 0 30px ${neon}50`, letterSpacing: '-0.02em',
+          fontSize: '2.5rem', fontWeight: 700, color: glow, lineHeight: 1,
+          textShadow: `0 0 16px ${glow}, 0 0 30px ${glow2}70`, letterSpacing: '-0.02em',
         }}>
           {streakCount}
         </span>
         <div>
-          <p style={{ fontSize: '0.6rem', color: neon, margin: 0, opacity: 0.6, letterSpacing: '0.08em' }}>DAY</p>
-          <p style={{ fontSize: '0.6rem', color: neon, margin: 0, opacity: 0.6, letterSpacing: '0.08em' }}>STREAK</p>
+          <p style={{ fontSize: '0.6rem', color: glow, margin: 0, opacity: 0.7, letterSpacing: '0.08em' }}>DAY</p>
+          <p style={{ fontSize: '0.6rem', color: glow, margin: 0, opacity: 0.7, letterSpacing: '0.08em' }}>STREAK</p>
         </div>
       </div>
 
-      {/* Calendar */}
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-          <span style={{ fontSize: 9, color: neon, letterSpacing: '0.1em', opacity: 0.7 }}>{monthLabel.toUpperCase()}</span>
-          <span style={{ fontSize: 9, color: '#717182' }}>Best {longest}</span>
+      {/* Calendar — 3D "carved" cells + month/year paging */}
+      <div style={{ flex: 1, perspective: '600px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7 }}>
+          <button
+            onClick={() => goMonth(-1)}
+            aria-label="Previous month"
+            className="dash-cal-nav-btn"
+            style={{ '--nav-glow': glow }}
+          >
+            <ChevronLeft size={11} />
+          </button>
+
+          <span style={{ fontSize: 9.5, color: glow, letterSpacing: '0.1em', opacity: 0.9, fontWeight: 700, textAlign: 'center' }}>
+            {monthLabel.toUpperCase()} {year}
+            {isCurrentMonth && <span style={{ color: '#717182', fontWeight: 500 }}> · Best {longest}</span>}
+          </span>
+
+          <button
+            onClick={() => goMonth(1)}
+            aria-label="Next month"
+            className="dash-cal-nav-btn"
+            style={{ '--nav-glow': glow }}
+          >
+            <ChevronRight size={11} />
+          </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+
+        <div
+          key={`${year}-${month}`}
+          className="dash-cal-slide"
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, '--slide-from': `${slideDir * 14}px` }}
+        >
           {cells.map((d, i) => {
             if (d === null) return <div key={i} />
             const cellDate = new Date(year, month, d)
@@ -778,17 +822,21 @@ function LoginStreakWidget({ streak, longest, history, user }) {
             const active   = historySet.has(key)
             const isToday  = key === todayKey
             return (
-              <div key={i} style={{
-                aspectRatio: '1', borderRadius: 3,
+              <div key={i} className="dash-cal-cell-3d" style={{
+                aspectRatio: '1', borderRadius: 5,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 8.5, fontWeight: 700,
-                background: active ? `${neon}22` : '#ffffff06',
-                border: isToday ? `1px solid ${neon}` : active ? `1px solid ${neon}35` : '1px solid transparent',
-                color: active ? neon : '#6a6a7a',
-                boxShadow: active ? `0 0 6px ${neon}40` : 'none',
-                transform: gridVisible ? 'scale(1)' : 'scale(0.6)',
+                background: active
+                  ? `linear-gradient(145deg, ${glow}, ${glow2})`
+                  : 'linear-gradient(145deg, #201735, #150f26)',
+                border: isToday ? `1px solid ${glow}` : active ? `1px solid ${glow}70` : '1px solid rgba(168,85,247,0.08)',
+                color: active ? '#fff' : '#9088a8',
+                boxShadow: active
+                  ? `0 2px 0 ${glow2}cc, 0 4px 10px ${glow}40, inset 0 1px 1px rgba(255,255,255,0.35)`
+                  : `0 2px 0 rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)`,
+                transform: gridVisible ? 'scale(1) translateY(0)' : 'scale(0.6) translateY(4px)',
                 opacity: gridVisible ? 1 : 0,
-                transition: `transform 0.25s ease ${i * 8}ms, opacity 0.25s ease ${i * 8}ms`,
+                transitionDelay: `${i * 8}ms`,
               }}>
                 {d}
               </div>
@@ -803,8 +851,8 @@ function LoginStreakWidget({ streak, longest, history, user }) {
           <div key={i} title={a.label} style={{
             flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
             padding: '6px 4px', borderRadius: 6,
-            background: a.unlocked ? `${purple}15` : '#ffffff05',
-            border: a.unlocked ? `1px solid ${purple}35` : '1px solid transparent',
+            background: a.unlocked ? `${glow2}20` : '#ffffff05',
+            border: a.unlocked ? `1px solid ${glow2}45` : '1px solid transparent',
             opacity: a.unlocked ? 1 : 0.35,
           }}>
             <span style={{ fontSize: '0.85rem' }}>{a.icon}</span>
@@ -983,6 +1031,43 @@ export default function DashboardPage() {
         }
         .dash-cal-cell { transition: transform 0.15s ease, box-shadow 0.15s ease; }
         .dash-cal-cell:hover { transform: scale(1.18); z-index: 2; }
+
+        /* 3D streak calendar cells — raised/pressed purple keycaps */
+        .dash-cal-cell-3d {
+          transition: transform 0.25s cubic-bezier(.4,0,.2,1), opacity 0.25s ease, box-shadow 0.2s ease;
+          transform-style: preserve-3d;
+          cursor: default;
+        }
+        .dash-cal-cell-3d:hover {
+          transform: scale(1.16) translateY(-2px) !important;
+          box-shadow: 0 5px 10px rgba(168,85,247,0.35), inset 0 1px 1px rgba(255,255,255,0.15) !important;
+          z-index: 2;
+        }
+        @keyframes dashCalSlideIn {
+          from { opacity: 0; transform: translateX(var(--slide-from, 14px)); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        .dash-cal-slide { animation: dashCalSlideIn 0.28s cubic-bezier(.4,0,.2,1); }
+
+        .dash-cal-nav-btn {
+          width: 18px; height: 18px; border-radius: 5px; flex-shrink: 0;
+          display: flex; align-items: center; justify-content: center;
+          background: linear-gradient(145deg, #241a3d, #170f28);
+          border: 1px solid rgba(168,85,247,0.3);
+          color: var(--nav-glow, #a855f7);
+          box-shadow: 0 2px 0 rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+          cursor: pointer;
+          transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+        }
+        .dash-cal-nav-btn:hover {
+          transform: translateY(-1px);
+          background: linear-gradient(145deg, #2f2251, #1c1332);
+          box-shadow: 0 3px 0 rgba(0,0,0,0.4), 0 0 8px rgba(168,85,247,0.45), inset 0 1px 0 rgba(255,255,255,0.08);
+        }
+        .dash-cal-nav-btn:active {
+          transform: translateY(1px);
+          box-shadow: 0 0 0 rgba(0,0,0,0.4);
+        }
         @keyframes dashFlamePulse {
           0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(249,115,22,0.5)); }
           50%      { transform: scale(1.1); filter: drop-shadow(0 0 8px rgba(249,115,22,0.85)); }
@@ -1043,8 +1128,9 @@ export default function DashboardPage() {
 
       {/* ── Stat cards ── */}
       <div className="dash-stat-grid">
-        <StatCard label="Friends"     value={frLoading ? '…' : friendsCount} icon={Users} color="#10b981" delay={80}  isDark={isDark} />
-        <StatCard label="Completed"   value={completedCount} icon={CheckCircle} color="#8b5cf6"    delay={160} isDark={isDark} />
+        <StatCard label="Friends"             value={frLoading ? '…' : friendsCount} icon={Users}      color="#10b981" delay={80}  isDark={isDark} />
+        <StatCard label="Completed"           value={completedCount} icon={CheckCircle} color="#8b5cf6" delay={160} isDark={isDark} />
+        <StatCard label="Total Games in Library" value={gamesCount}  icon={Gamepad2}    color={ACCENT}  delay={240} isDark={isDark} />
       </div>
 
       {/* ── Row 2: Breakdown + Progress + Streak ── */}
