@@ -52,18 +52,21 @@ export default function AboutPage() {
 
   return (
     <div className="min-h-full relative overflow-hidden" style={{ background: pageBg }}>
-      {/* Background watermark — low-opacity full-page image, with a solid
-          tint on top so text stays readable in both light and dark mode. */}
+      {/* Background watermark — low-opacity full-page image, with a light
+          tint on top so text stays readable in both light and dark mode.
+          (Previous version stacked a near-opaque tint over an already-faint
+          image, which made the watermark invisible — fixed by giving the
+          image more presence and the tint less.) */}
       <div
         className="absolute inset-0 z-0"
         style={{
           backgroundImage: `url(${watermark})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          opacity: isDark ? 0.08 : 0.05,
+          opacity: isDark ? 0.18 : 0.12,
         }}
       />
-      <div className="absolute inset-0 z-0" style={{ background: pageBg, opacity: 0.92 }} />
+      <div className="absolute inset-0 z-0" style={{ background: pageBg, opacity: 0.7 }} />
 
       <div className="relative z-10 px-4 py-6 sm:px-6 sm:py-8 md:px-10 md:py-10">
         <div className="max-w-5xl mx-auto">
@@ -145,12 +148,14 @@ export default function AboutPage() {
                   style={{ background: cardBg, border: `1px solid ${borderCol}` }}
                 >
                   <div className="flex items-center gap-4">
-                    <img
-                      src={person.photo}
-                      alt={person.name}
-                      className="w-14 h-14 rounded-full object-cover flex-shrink-0"
-                      style={{ border: `2px solid ${person.accent}` }}
-                    />
+                    <div className="overflow-visible flex-shrink-0 relative z-0 hover:z-20">
+                      <img
+                        src={person.photo}
+                        alt={person.name}
+                        className="w-14 h-14 rounded-full object-cover transition-transform duration-300 ease-out hover:scale-[2.2] hover:shadow-2xl cursor-pointer relative"
+                        style={{ border: `2px solid ${person.accent}` }}
+                      />
+                    </div>
                     <div className="min-w-0">
                       <p className="font-bold text-base" style={{ color: textMain }}>
                         {person.name}
