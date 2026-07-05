@@ -11,6 +11,16 @@ const FULL_TEXT = 'Welcome to THE VOID - DESIGNED AND DEVELOPED BY SUBHRANIL MAN
 const GLITCH_CHARS = '!@#$%^&*<>?/\\|[]{}~ABCDEFXYZabcxyz0123456789░▒▓█▄▀ΞΔΩ∅∞'
 const randomChar = () => GLITCH_CHARS[Math.floor(Math.random() * GLITCH_CHARS.length)]
 
+function timeAgo(dateStr) {
+  if (!dateStr) return ''
+  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000)
+  if (mins < 1) return 'now'
+  if (mins < 60) return `${mins}m`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h`
+  return `${Math.floor(hrs / 24)}d`
+}
+
 function GlitchTicker({ dark }) {
   const [displayed, setDisplayed] = useState('')
   const [phase, setPhase] = useState('reveal')
@@ -441,6 +451,9 @@ function NotificationBell({ dark }) {
                   <p style={{ fontSize: 12, fontWeight: 600, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     <b>{req.requester?.username}</b> sent you a friend request
                   </p>
+                  {req.created_at && (
+                    <span style={{ fontSize: 10, color: textMut, fontFamily: "'Share Tech Mono', monospace" }}>{timeAgo(req.created_at)}</span>
+                  )}
                   <div style={{ display: 'flex', gap: 6, marginTop: 6 }} onClick={e => e.stopPropagation()}>
                     <button onClick={() => acceptReq(req.id)} style={{
                       fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
@@ -474,9 +487,12 @@ function NotificationBell({ dark }) {
                     : (s.username?.[0]?.toUpperCase() || '?')}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <b>{s.username || 'Someone'}</b> sent you {s.count > 1 ? `${s.count} messages` : 'a message'}
-                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                      <b>{s.username || 'Someone'}</b> sent you {s.count > 1 ? `${s.count} messages` : 'a message'}
+                    </p>
+                    <span style={{ fontSize: 10, color: textMut, fontFamily: "'Share Tech Mono', monospace", flexShrink: 0 }}>{timeAgo(s.last_message_at)}</span>
+                  </div>
                   {s.last_message && (
                     <p style={{ fontSize: 11, color: textMut, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 2 }}>
                       {s.last_message}
@@ -508,9 +524,12 @@ function NotificationBell({ dark }) {
                       : (XP_LABELS[n.action]?.icon || '⚡')}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 12, color: n.read ? textSub : text, fontWeight: n.read ? 400 : 600 }}>
-                    {n.message}
-                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <p style={{ fontSize: 12, color: n.read ? textSub : text, fontWeight: n.read ? 400 : 600, flex: 1, minWidth: 0 }}>
+                      {n.message}
+                    </p>
+                    <span style={{ fontSize: 10, color: textMut, fontFamily: "'Share Tech Mono', monospace", flexShrink: 0 }}>{timeAgo(n.created_at)}</span>
+                  </div>
                   {n.xp_earned > 0 && (
                     <span style={{
                       display: 'inline-block', marginTop: 3, fontSize: 10, fontWeight: 700,

@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { LibraryProvider } from './context/LibraryContext'
 import { XPToastProvider } from './components/XPToast'
+import { ChatNotifyProvider } from './context/ChatNotifyContext'
 
 import Layout from './components/layout/Layout'
 import LoginPage from './pages/LoginPage'
@@ -151,25 +152,31 @@ export default function App() {
               <Toaster position="top-right" toastOptions={{
                 style: { fontFamily: 'DM Sans, sans-serif', borderRadius: '12px', fontSize: '14px' }
               }} />
-              <Routes>
-                <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-                <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
-                <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-                  <Route path="/" element={<HomePage />} />
-                  <Route path="/discover" element={<DiscoverPage />} />
-                  <Route path="/library" element={<LibraryPage />} />
-                  <Route path="/trending" element={<TrendingPage />} />
-                  <Route path="/news" element={<NewsPage />} />
-                  <Route path="/community" element={<CommunityPage />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/settings" element={<SettingsPage />} />
-                  <Route path="/achievements" element={<AchievementsPage />} />
-                  <Route path="/friends" element={<FriendsPage />} />
-                  <Route path="/about" element={<AboutPage />} />
-                </Route>
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+              {/* ChatNotifyProvider needs to be inside BrowserRouter (it uses
+                  useNavigate to jump straight to a DM when a toast is
+                  clicked) but wraps every route so its socket + toast stay
+                  alive no matter which page you're on. */}
+              <ChatNotifyProvider>
+                <Routes>
+                  <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
+                  <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
+                  <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/discover" element={<DiscoverPage />} />
+                    <Route path="/library" element={<LibraryPage />} />
+                    <Route path="/trending" element={<TrendingPage />} />
+                    <Route path="/news" element={<NewsPage />} />
+                    <Route path="/community" element={<CommunityPage />} />
+                    <Route path="/dashboard" element={<DashboardPage />} />
+                    <Route path="/profile" element={<ProfilePage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/achievements" element={<AchievementsPage />} />
+                    <Route path="/friends" element={<FriendsPage />} />
+                    <Route path="/about" element={<AboutPage />} />
+                  </Route>
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </ChatNotifyProvider>
             </BrowserRouter>
           </XPToastProvider>
         </LibraryProvider>

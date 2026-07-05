@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { X, Send, Minimize2, Maximize2, Circle, Loader2, Smile, MoreVertical, Trash2, Ban, UserX, Check, CheckCheck, Clock } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useTheme } from '../../context/ThemeContext'
+import { useChatNotify } from '../../context/ChatNotifyContext'
 import axios from 'axios'
 
 // Compact, curated emoji set — enough variety for casual chat without
@@ -109,7 +110,17 @@ function MessageBubble({ msg, isSelf, showAvatar, friend, accentColors, isDark, 
 export default function DMChatPanel({ friend, onClose, onNewMessage, onRequestRemove, onRequestBlock, requestConfirm }) {
   const { user } = useAuth()
   const { dark: isDark } = useTheme()
+  const { setActiveChatFriendId } = useChatNotify()
   const accentColors = { primary: '#a855f7', secondary: '#7c3aed' }
+
+  // Tell the global notification socket "this is the conversation I'm
+  // currently looking at" — that's what stops the incoming-message toast
+  // from firing for this friend while their panel is open, and lets it
+  // resume the instant you close it or switch to someone else's chat.
+  useEffect(() => {
+    setActiveChatFriendId(friend.id)
+    return () => setActiveChatFriendId(null)
+  }, [friend.id, setActiveChatFriendId])
 
   const [messages, setMessages]   = useState([])
   const [input, setInput]         = useState('')
