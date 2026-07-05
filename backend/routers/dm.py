@@ -15,7 +15,8 @@ router = APIRouter(prefix="/api/dm", tags=["Direct Messages"])
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
 ALGORITHM  = os.getenv("ALGORITHM", "HS256")
 
-# ─── Active WebSocket connections ────────────────────────
+from utils.ws_notify import user_sockets, push_to_user
+
 # room_id → { user_id: websocket }
 active_rooms: Dict[str, Dict[int, WebSocket]] = {}
 
@@ -113,10 +114,47 @@ async def dm_websocket(
                     except Exception:
                         active_rooms[room_id].pop(uid, None)
 
+                # global push so a toast can show even off this room
+                await push_to_user(other_id, {
+                    "type":              "new_dm",
+                    "id":                msg.id,
+                    "sender_id":         user.id,
+                    "sender_username":   user.username,
+                    "sender_avatar_url": getattr(user, "avatar_url", None),
+                    "content":           msg.content,
+                    "room_id":           room_id,
+                    "created_at":        msg.created_at.isoformat(),
+                })
+
     except WebSocketDisconnect:
         active_rooms.get(room_id, {}).pop(user.id, None)
         if not active_rooms.get(room_id):
             active_rooms.pop(room_id, None)
+
+
+# Global per-user socket, kept open across every page (see ChatNotifyContext)
+@router.websocket("/ws/notify")
+async def notify_websocket(
+    websocket: WebSocket,
+    token: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    user = get_user_from_token(token, db)
+    if not user:
+        await websocket.close(code=4001)
+        return
+
+    await websocket.accept()
+    user_sockets[user.id] = websocket
+
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        if user_sockets.get(user.id) is websocket:
+            user_sockets.pop(user.id, None)
 
 
 @router.get("/unread-count")
@@ -285,5 +323,16 @@ async def send_message(
             await ws.send_text(json.dumps(ws_payload))
         except Exception:
             active_rooms[room_id].pop(uid, None)
+
+    await push_to_user(payload.receiver_id, {
+        "type":              "new_dm",
+        "id":                msg.id,
+        "sender_id":         current_user.id,
+        "sender_username":   current_user.username,
+        "sender_avatar_url": getattr(current_user, "avatar_url", None),
+        "content":           msg.content,
+        "room_id":           room_id,
+        "created_at":        msg.created_at.isoformat(),
+    })
 
     return msg

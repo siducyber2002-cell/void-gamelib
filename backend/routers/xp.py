@@ -6,7 +6,9 @@ from db.database import get_db
 from models.models import User, UserActivity, Notification
 from schemas.schemas import UserOut
 from utils.auth import get_current_user
-from datetime import datetime
+from datetime import datetime, timedelta
+
+NOTIF_MAX_AGE = timedelta(days=1)
 
 router = APIRouter(prefix="/api/xp", tags=["XP"])
 
@@ -176,7 +178,10 @@ def get_notifications(
 ):
     notifs = (
         db.query(Notification)
-        .filter(Notification.user_id == current_user.id)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.created_at >= datetime.utcnow() - NOTIF_MAX_AGE,
+        )
         .order_by(desc(Notification.created_at))
         .limit(limit)
         .all()
@@ -203,7 +208,11 @@ def get_unread_count(
 ):
     count = (
         db.query(Notification)
-        .filter(Notification.user_id == current_user.id, Notification.read == False)
+        .filter(
+            Notification.user_id == current_user.id,
+            Notification.read == False,
+            Notification.created_at >= datetime.utcnow() - NOTIF_MAX_AGE,
+        )
         .count()
     )
     return {"unread": count}

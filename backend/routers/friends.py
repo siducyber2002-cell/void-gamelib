@@ -13,6 +13,7 @@ from utils.auth import get_current_user
 # doesn't match your actual folder layout, tell me the structure and I'll
 # adjust it.
 from routers.xp import apply_xp, XP_MAP, NOTIFICATION_LABELS
+from utils.ws_notify import push_to_user
 
 router = APIRouter(prefix="/api/friends", tags=["Friends"])
 
@@ -50,7 +51,7 @@ def get_requests(
 
 
 @router.post("/request/{user_id}", status_code=201)
-def send_request(
+async def send_request(
     user_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -72,11 +73,21 @@ def send_request(
     fs = Friendship(requester_id=current_user.id, addressee_id=user_id)
     db.add(fs)
     db.commit()
+    db.refresh(fs)
+
+    await push_to_user(user_id, {
+        "type":              "friend_request",
+        "id":                fs.id,
+        "sender_id":         current_user.id,
+        "sender_username":   current_user.username,
+        "sender_avatar_url": getattr(current_user, "avatar_url", None),
+    })
+
     return {"message": "Friend request sent"}
 
 
 @router.post("/accept/{friendship_id}")
-def accept_request(
+async def accept_request(
     friendship_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -143,6 +154,14 @@ def accept_request(
                     created_at=datetime.utcnow(),
                 ))
             db.commit()
+
+        await push_to_user(requester.id, {
+            "type":              "friend_accepted",
+            "id":                fs.id,
+            "sender_id":         current_user.id,
+            "sender_username":   current_user.username,
+            "sender_avatar_url": getattr(current_user, "avatar_url", None),
+        })
 
     return {"message": "Friend request accepted"}
 
