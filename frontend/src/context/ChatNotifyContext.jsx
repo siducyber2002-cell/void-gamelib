@@ -76,6 +76,20 @@ const EVENT_CONFIG = {
   friend_accepted:   (d) => ({ subtitle: 'Accepted your friend request', path: '/friends?tab=Friends' }),
 }
 
+// Dedupe key so a request/accept that arrived while offline only ever
+// toasts once, even across page reloads or reconnects.
+const SEEN_KEY = 'gl_seen_notify_events'
+const getSeen  = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY)) || []) } catch { return new Set() } }
+const markSeen = (id) => {
+  const s = getSeen(); s.add(id)
+  localStorage.setItem(SEEN_KEY, JSON.stringify([...s].slice(-300)))
+}
+
+// Module-level (not per-render) lock — React 18 Strict Mode mounts effects
+// twice in dev, so without this, two overlapping catchUp() calls can both
+// read localStorage before either writes back and both fire the same toast.
+let catchUpInFlight = false
+
 export function ChatNotifyProvider({ children }) {
   const { user, token } = useAuth()
   const navigate = useNavigate()
@@ -104,6 +118,73 @@ export function ChatNotifyProvider({ children }) {
 
     let stopped = false
 
+    const fireToast = (data) => {
+      const build = EVENT_CONFIG[data.type]
+      if (!build) return
+      if (data.type === 'new_dm' && activeChatFriendIdRef.current === data.sender_id) return
+
+      const { subtitle, path } = build(data)
+      const toastId = `${data.type}-${data.sender_id}-${data.id}`
+
+      xpEventBus.emit({ kind: data.type })
+
+      toast.custom(
+        (t) => (
+          <NotifyToastCard
+            t={t}
+            type={data.type}
+            avatarUrl={data.sender_avatar_url}
+            username={data.sender_username}
+            subtitle={subtitle}
+            onOpen={() => { toast.dismiss(toastId); navigate(path) }}
+          />
+        ),
+        { duration: 3000, id: toastId }
+      )
+    }
+
+    // Catch up on anything that happened while you were offline — a friend
+    // request/accept sent to an offline user has nowhere to go live, so on
+    // login/reconnect we pull recent ones and toast whatever hasn't been
+    // shown yet (tracked via SEEN_KEY, so it only ever fires once).
+    const catchUp = async () => {
+      if (catchUpInFlight) return
+      catchUpInFlight = true
+      try {
+        const axios = (await import('axios')).default
+        const seen = getSeen()
+        const [{ data: requests }, { data: notifs }] = await Promise.all([
+          axios.get('/api/friends/requests'),
+          axios.get('/api/xp/notifications?limit=20'),
+        ])
+        if (stopped) return
+
+        requests.forEach((r) => {
+          const key = `friend_request-${r.id}`
+          if (seen.has(key)) return
+          markSeen(key)
+          fireToast({
+            type: 'friend_request', id: r.id, sender_id: r.requester_id,
+            sender_username: r.requester?.username, sender_avatar_url: r.requester?.avatar_url,
+          })
+        })
+
+        notifs.filter((n) => n.type === 'friend_accepted').forEach((n) => {
+          const key = `friend_accepted-${n.id}`
+          if (seen.has(key)) return
+          markSeen(key)
+          fireToast({
+            type: 'friend_accepted', id: n.id, sender_id: n.id,
+            sender_username: n.detail || 'Someone', sender_avatar_url: null,
+          })
+        })
+      } catch {
+        /* catch-up is best-effort — never block the app on it */
+      } finally {
+        catchUpInFlight = false
+      }
+    }
+
     const connect = () => {
       if (stopped) return
 
@@ -121,34 +202,7 @@ export function ChatNotifyProvider({ children }) {
       ws.onmessage = (e) => {
         let data
         try { data = JSON.parse(e.data) } catch { return }
-
-        const build = EVENT_CONFIG[data.type]
-        if (!build) return
-
-        // Already viewing that DM live — skip its toast only.
-        if (data.type === 'new_dm' && activeChatFriendIdRef.current === data.sender_id) return
-
-        const { subtitle, path } = build(data)
-        const toastId = `${data.type}-${data.sender_id}-${data.id}`
-
-        // Bell already listens on xpEventBus (for xp/level_up) and refetches
-        // on any event — piggyback on it so the unread badge updates the
-        // instant this arrives, instead of waiting on its ~12s poll.
-        xpEventBus.emit({ kind: data.type })
-
-        toast.custom(
-          (t) => (
-            <NotifyToastCard
-              t={t}
-              type={data.type}
-              avatarUrl={data.sender_avatar_url}
-              username={data.sender_username}
-              subtitle={subtitle}
-              onOpen={() => { toast.dismiss(toastId); navigate(path) }}
-            />
-          ),
-          { duration: 3000, id: toastId }
-        )
+        fireToast(data)
       }
 
       ws.onclose = () => {
@@ -165,6 +219,7 @@ export function ChatNotifyProvider({ children }) {
     }
 
     connect()
+    catchUp()
 
     return () => {
       stopped = true

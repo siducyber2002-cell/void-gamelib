@@ -12,23 +12,14 @@ import DMChatPanel from '../components/chat/DMChatPanel'
 import { useXPToast } from '../components/XPToast'
 import { awardXP } from '../utils/xpService'
 
-const TABS = ['Friends', 'Requests', 'Find People', 'Online', 'Blocked']
+const TABS = ['Friends', 'Requests', 'Online', 'Offline', 'Blocked']
 const ACCENT = { primary: '#a855f7', secondary: '#7c3aed' }
 
 const AVATAR_PALETTE = ['#a855f7','#f43f5e','#10b981','#f59e0b','#8b5cf6','#3b82f6','#ec4899','#14b8a6']
 const avatarColor = (name = '') => AVATAR_PALETTE[(name.charCodeAt(0) || 0) % AVATAR_PALETTE.length]
 
-// Column count derived from an explicit minimum card width, rather than
-// fixed breakpoints. The old breakpoints were computed from window width
-// alone and never accounted for the DM panel's 384px push — so with the
-// panel open, cards could still land in a 3-column layout even though the
-// *actual* remaining width per card was too narrow for the 3-button row,
-// squashing the flexible "Message" button down to almost nothing. Basing
-// the column count on available width (window width minus the panel push
-// and page padding) guarantees every card gets at least CARD_MIN_WIDTH,
-// so the button row always has room — while still only being recomputed
-// on real resize/panel-toggle events, not continuously during the
-// marginRight transition (see the note where gridCols is set).
+// Grid columns are derived from available width (not fixed breakpoints) so
+// every card keeps at least CARD_MIN_WIDTH, even with the DM panel open.
 const CARD_MIN_WIDTH = 210
 const GRID_GAP = 20
 const computeCols = (availableWidth) => {
@@ -60,6 +51,7 @@ export default function FriendsPage() {
   const [sending, setSending]             = useState({})
   const [sentTo, setSentTo]               = useState(new Set()) // user ids we've sent a request to this session
   const [chatFriend, setChatFriend]       = useState(null)
+  const [addFriendOpen, setAddFriendOpen] = useState(false)
 
   // Pending destructive action awaiting confirmation (remove / block / decline).
   // Shape: { title, message, confirmLabel, danger, onConfirm }
@@ -75,10 +67,8 @@ export default function FriendsPage() {
   const txtMut    = isDark ? '#504e6a'               : '#a0a0b0'
 
   // ── responsive chat-open push ────────────────────────────
-  // DMChatPanel is only 384px wide at sm (>=640px) and up — below that it's
-  // full-width. Pushing the page by a fixed 384px regardless of viewport
-  // squeezes/distorts the tab bar and cards on narrower screens. Only push
-  // when there's actually room for a fixed 384px side panel.
+  // DMChatPanel is 384px wide at >=1024px; below that it's full-width, so
+  // only push the page content when there's actually room for it.
   const [isWideEnough, setIsWideEnough] = useState(
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   )
@@ -89,10 +79,7 @@ export default function FriendsPage() {
   }, [])
   const chatPushPx = chatFriend && isWideEnough ? 384 : 0
 
-  // ── mobile layout detection ──────────────────────────────
-  // This page is styled with inline styles (no Tailwind breakpoints), so
-  // responsive behavior for the stats strip / tabs row / top row is driven
-  // from JS instead of CSS media queries.
+  // ── mobile layout detection (inline styles, no CSS breakpoints) ──
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
   )
@@ -102,22 +89,11 @@ export default function FriendsPage() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // ── grid column count (see computeCols comment above) ────
-  // Previously derived available width from window.innerWidth minus
-  // guessed constants for panel push / page padding — but that has no
-  // idea the app has a left sidebar eating real horizontal space, so the
-  // guess was still wrong (e.g. picking 2 columns when only ~180px was
-  // actually available per card). Measuring the outer wrapper directly
-  // with a ResizeObserver gives the real number regardless of sidebar
-  // width, collapsed/expanded state, etc.
-  //
-  // Crucially, the observed element (outerRef, attached to the outermost
-  // div below) never has `marginRight` applied to it — only the inner
-  // content div does — so this observer only fires on genuine layout
-  // changes (window resize, sidebar toggle), never on our own DM-panel
-  // push animation. That's what avoids reintroducing the mid-transition
-  // snapping/shaking bug: the column count still only changes at the two
-  // endpoints of the push animation, never during it.
+  // ── grid column count ─────────────────────────────────────
+  // Measures the outer wrapper directly (ResizeObserver) so column count
+  // accounts for real available width — sidebar, DM panel push, etc.
+  // outerRef never gets marginRight itself, so this only fires on genuine
+  // layout changes, not on the push animation's own transition.
   const outerRef = useRef(null)
   const [outerWidth, setOuterWidth] = useState(0)
   useEffect(() => {
@@ -133,11 +109,7 @@ export default function FriendsPage() {
   const [gridCols, setGridCols] = useState(3)
   useEffect(() => {
     if (!outerWidth) return
-    // On mobile/Android widths, always render friend cards stacked in a
-    // single column — computeCols() is tuned for wider viewports and can
-    // still return 2+ on phones with slightly generous widths, which is
-    // what caused the squashed/misaligned cards on Android. Below the
-    // isMobile breakpoint we skip that math entirely and force 1.
+    // Always single-column on mobile — computeCols() is tuned for wider viewports.
     if (isMobile) { setGridCols(1); return }
     const pagePadding = 64
     setGridCols(computeCols(outerWidth - chatPushPx - pagePadding))
@@ -159,9 +131,7 @@ export default function FriendsPage() {
     } catch { toast.error('Failed to load friends') }
     finally   { setLoading(false) }
 
-    // Blocked list is fetched separately so a missing/older endpoint here
-    // doesn't take down the rest of the page — it just leaves the Blocked
-    // tab empty until the backend route exists.
+    // Fetched separately so a missing endpoint doesn't break the rest of the page.
     try {
       const br = await axios.get('/api/friends/blocked')
       setBlocked(br.data)
@@ -169,9 +139,7 @@ export default function FriendsPage() {
   }, [])
   useEffect(() => { loadFriends() }, [loadFriends])
 
-  // If a chat panel is open, keep its friend data (avatar, online status,
-  // etc.) in sync with the periodic refresh above — otherwise it's stuck
-  // showing whatever was true the moment the panel was opened.
+  // Keep an open chat panel's friend data in sync with refreshed friend list.
   useEffect(() => {
     if (!chatFriend) return
     const updated = friends.map(f => getPartner(f)).find(f => f.id === chatFriend.id)
@@ -179,13 +147,8 @@ export default function FriendsPage() {
   }, [friends])
 
   // ── deep-link: notification bell → /friends?tab=Friends&dm=<friendId> ──
-  // Auto-open that friend's DM panel once friends have loaded. Tracks the
-  // *last dm id we auto-opened* (not just a boolean) — the notification
-  // bell uses navigate() to change the URL without remounting this page,
-  // so a plain "already ran once" flag would block every deep-link after
-  // the first one until a hard refresh reset it. Comparing the id instead
-  // still stops the same id from reopening if the user closes it manually,
-  // while letting a *new* dm= id open the panel every time.
+  // Auto-opens that friend's DM once loaded. Tracks the last dm id opened
+  // (not a boolean) so each new dm= id still opens even without a remount.
   const lastAutoOpenedDM = useRef(null)
   useEffect(() => {
     if (loading) return
@@ -289,10 +252,7 @@ export default function FriendsPage() {
     }
   }
 
-  // ── confirmation wrappers ────────────────────────────────
-  // Every destructive action (remove / block / decline) routes through here
-  // instead of firing immediately, so the person always sees exactly what
-  // they're about to do before it happens.
+  // ── confirmation wrappers (remove/block/decline confirm before firing) ──
   const requestRemoveFriend = (friend) => {
     setConfirm({
       title: 'Remove friend?',
@@ -350,9 +310,6 @@ export default function FriendsPage() {
           background: bgCard,
           border: `1px solid ${active ? ACCENT.primary : borderClr}`,
           borderRadius: 20, overflow: 'hidden',
-          // Active card used to glow with a 40px blur, which — with only a
-          // 16px grid gap — visibly bled over the neighboring card's
-          // buttons. Tightened the blur so the glow stays inside the gap.
           boxShadow: active
             ? `0 0 0 1px ${ACCENT.primary}50, 0 6px 18px ${ACCENT.primary}22`
             : isDark ? 'none' : '0 2px 12px rgba(0,0,0,0.06)',
@@ -456,10 +413,6 @@ export default function FriendsPage() {
               }}
             >
               <MessageCircle size={13} style={{ flexShrink: 0 }} />
-              {/* minWidth:0 + ellipsis: without this, "Chatting…" (longer
-                  than "Message") forced the button past the card's edge
-                  whenever the card got narrower — the other visible piece
-                  of the same overlap bug from the screenshot. */}
               <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
                 {active ? 'Chatting…' : 'Message'}
               </span>
@@ -498,7 +451,7 @@ export default function FriendsPage() {
     )
   }
 
-  // Compact row for Requests / Find People / Online / Blocked tabs
+  // Compact row used by Requests / Add Friend modal / Online / Offline / Blocked
   const PersonRow = ({ person, actions }) => (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 14,
@@ -593,13 +546,108 @@ export default function FriendsPage() {
     )
   }
 
-  // Original Gotham-noir watermark: layered skyline with lit windows,
-  // ground fog, and a bat silhouette crossing a spotlight beam. Built from
-  // scratch for this redesign — not traced from or copied out of any game,
-  // film, or fan artwork. Windows are seeded off username/theme so the
-  // scene stays static per render instead of re-randomizing on every
-  // re-paint. Dimmer in light mode since dark shapes read much heavier on
-  // a white page than on the near-black dark theme.
+  // Add Friend popup — live username search + send request, opened from
+  // the top "Add Friend" button. Closing it clears the search state.
+  const AddFriendModal = () => {
+    if (!addFriendOpen) return null
+    const close = () => { setAddFriendOpen(false); setSearchQ(''); setSearchResults([]) }
+    return (
+      <div
+        onClick={close}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 300,
+          background: 'rgba(6,6,12,0.6)', backdropFilter: 'blur(3px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+        }}
+      >
+        <div
+          onClick={e => e.stopPropagation()}
+          style={{
+            background: bgCard, border: `1px solid ${borderClr}`, borderRadius: 20,
+            padding: 24, maxWidth: 460, width: '100%', maxHeight: '80vh',
+            display: 'flex', flexDirection: 'column', gap: 14,
+            boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h3 style={{ fontSize: 17, fontWeight: 800, color: txtPri }}>Add Friend</h3>
+            <button
+              onClick={close}
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: txtMut, display: 'flex' }}
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div style={{ position: 'relative' }}>
+            <Search size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />
+            <input
+              autoFocus
+              value={searchQ}
+              onChange={e => setSearchQ(e.target.value)}
+              placeholder="Search by username…"
+              style={{
+                width: '100%', paddingLeft: 42, paddingRight: 42, paddingTop: 12, paddingBottom: 12,
+                borderRadius: 12, border: `1.5px solid ${borderClr}`,
+                fontSize: 14, background: bgInput, color: txtPri,
+                outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',
+              }}
+              onFocus={e => { e.target.style.borderColor = ACCENT.primary }}
+              onBlur={e => { e.target.style.borderColor = borderClr }}
+            />
+            {searching && <Loader2 size={15} className="animate-spin" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />}
+          </div>
+
+          <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 140 }}>
+            {searchQ && !searching && searchResults.length === 0 && (
+              <p style={{ textAlign: 'center', padding: '32px 0', color: txtSec, fontWeight: 600 }}>
+                No users found for "{searchQ}"
+              </p>
+            )}
+
+            {searchResults.map(u => {
+              const requested = sentTo.has(u.id)
+              return (
+                <PersonRow key={u.id} person={u} actions={
+                  <button
+                    onClick={() => !requested && sendRequest(u.id)}
+                    disabled={sending[u.id] || requested}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      padding: '8px 16px', borderRadius: 10, border: 'none',
+                      background: requested
+                        ? (isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6')
+                        : `linear-gradient(135deg, ${ACCENT.primary}, #8b5cf6)`,
+                      color: requested ? txtSec : '#fff', fontSize: 13, fontWeight: 700,
+                      cursor: (sending[u.id] || requested) ? 'not-allowed' : 'pointer',
+                      opacity: sending[u.id] ? 0.6 : 1, transition: 'opacity 0.15s',
+                    }}
+                  >
+                    {sending[u.id]
+                      ? <><Loader2 size={13} className="animate-spin" /> Sending…</>
+                      : requested
+                        ? <><Check size={13} /> Requested</>
+                        : <><UserPlus size={13} /> Add</>}
+                  </button>
+                } />
+              )
+            })}
+
+            {!searchQ && (
+              <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                <Search size={40} style={{ margin: '0 auto 12px', color: txtMut, display: 'block' }} />
+                <p style={{ fontWeight: 800, color: txtPri, fontSize: 15, marginBottom: 6 }}>Find your gaming squad</p>
+                <p style={{ color: txtSec, fontSize: 13 }}>Type a username above to search</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Gotham-noir skyline watermark. Windows are seeded off position so the
+  // scene stays static per render instead of re-randomizing on repaint.
   const BackgroundArt = () => {
     // Deterministic pseudo-random window placement (no re-shuffle per render)
     const seeded = (n) => { const x = Math.sin(n * 999) * 10000; return x - Math.floor(x) }
@@ -772,7 +820,7 @@ export default function FriendsPage() {
             </p>
           </div>
           <button
-            onClick={() => setTab('Find People')}
+            onClick={() => setAddFriendOpen(true)}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
               padding: '10px 20px', borderRadius: 12, border: 'none',
@@ -884,7 +932,7 @@ export default function FriendsPage() {
             ? <div style={{ textAlign: 'center', padding: '72px 0' }}>
                 <Users size={48} style={{ margin: '0 auto 16px', color: txtMut, display: 'block' }} />
                 <p style={{ fontSize: 20, fontWeight: 800, color: txtPri, marginBottom: 8 }}>No friends yet</p>
-                <p style={{ color: txtSec }}>Use "Find People" to grow your squad</p>
+                <p style={{ color: txtSec }}>Use "Add Friend" to grow your squad</p>
               </div>
             : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: isMobile ? 12 : 20, width: '100%', maxWidth: '100%' }}>
                 {filteredFriends.map(f => <FriendCard key={f.id} friend={f} />)}
@@ -910,69 +958,43 @@ export default function FriendsPage() {
           </div>
         )}
 
-        {/* ── FIND PEOPLE TAB ──────────────────────────────── */}
-        {tab === 'Find People' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 540 }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />
-              <input
-                value={searchQ}
-                onChange={e => setSearchQ(e.target.value)}
-                placeholder="Search by username…"
-                style={{
-                  width: '100%', paddingLeft: 42, paddingRight: 42, paddingTop: 12, paddingBottom: 12,
-                  borderRadius: 12, border: `1.5px solid ${borderClr}`,
-                  fontSize: 14, background: bgInput, color: txtPri,
-                  outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',
-                }}
-                onFocus={e => { e.target.style.borderColor = ACCENT.primary }}
-                onBlur={e => { e.target.style.borderColor = borderClr }}
-              />
-              {searching && <Loader2 size={15} className="animate-spin" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />}
-            </div>
-
-            {searchQ && !searching && searchResults.length === 0 && (
-              <p style={{ textAlign: 'center', padding: '32px 0', color: txtSec, fontWeight: 600 }}>
-                No users found for "{searchQ}"
-              </p>
-            )}
-
-            {searchResults.map(u => {
-              const requested = sentTo.has(u.id)
-              return (
-                <PersonRow key={u.id} person={u} actions={
-                  <button
-                    onClick={() => !requested && sendRequest(u.id)}
-                    disabled={sending[u.id] || requested}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '8px 16px', borderRadius: 10, border: 'none',
-                      background: requested
-                        ? (isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6')
-                        : `linear-gradient(135deg, ${ACCENT.primary}, #8b5cf6)`,
-                      color: requested ? txtSec : '#fff', fontSize: 13, fontWeight: 700,
-                      cursor: (sending[u.id] || requested) ? 'not-allowed' : 'pointer',
-                      opacity: sending[u.id] ? 0.6 : 1, transition: 'opacity 0.15s',
-                    }}
-                  >
-                    {sending[u.id]
-                      ? <><Loader2 size={13} className="animate-spin" /> Sending…</>
-                      : requested
-                        ? <><Check size={13} /> Requested</>
-                        : <><UserPlus size={13} /> Add</>}
-                  </button>
-                } />
-              )
-            })}
-
-            {!searchQ && (
-              <div style={{ textAlign: 'center', padding: '64px 0' }}>
-                <Search size={44} style={{ margin: '0 auto 14px', color: txtMut, display: 'block' }} />
-                <p style={{ fontWeight: 800, color: txtPri, fontSize: 17, marginBottom: 8 }}>Find your gaming squad</p>
-                <p style={{ color: txtSec, fontSize: 13 }}>Type a username above to search</p>
+        {/* ── OFFLINE TAB ──────────────────────────────────── */}
+        {tab === 'Offline' && (
+          friendPartners.filter(f => !f.online).length === 0
+            ? <div style={{ textAlign: 'center', padding: '72px 0' }}>
+                <Wifi size={44} style={{ margin: '0 auto 14px', color: txtMut, display: 'block' }} />
+                <p style={{ fontWeight: 800, color: txtPri, marginBottom: 8 }}>Everyone's online!</p>
+                <p style={{ color: txtSec, fontSize: 13 }}>Offline friends will appear here</p>
               </div>
-            )}
-          </div>
+            : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: isMobile ? 12 : 20, width: '100%', maxWidth: '100%' }}>
+                {friendPartners.filter(f => !f.online).map(f => (
+                  <div
+                    key={f.id}
+                    onClick={() => setChatFriend(f)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+                      background: bgCard, border: `1px solid ${borderClr}`, borderRadius: 14,
+                      cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.borderColor = `${ACCENT.primary}60`; e.currentTarget.style.background = isDark ? 'rgba(168,85,247,0.07)' : '#faf5ff' }}
+                    onMouseLeave={e => { e.currentTarget.style.borderColor = borderClr; e.currentTarget.style.background = bgCard }}
+                  >
+                    <div style={{
+                      width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+                      background: avatarColor(f.username), overflow: 'hidden',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: '#fff', fontWeight: 800, fontSize: 16,
+                    }}>
+                      {f.avatar_url ? <img src={f.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : f.username?.[0]?.toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontWeight: 700, fontSize: 13, color: txtPri }}>{f.username}</p>
+                      <p style={{ fontSize: 11, color: txtMut, fontWeight: 600 }}>Offline</p>
+                    </div>
+                    <MessageCircle size={14} style={{ color: txtMut, flexShrink: 0 }} />
+                  </div>
+                ))}
+              </div>
         )}
 
         {/* ── ONLINE TAB ───────────────────────────────────── */}
@@ -1058,6 +1080,7 @@ export default function FriendsPage() {
       )}
 
       <ConfirmDialog />
+      <AddFriendModal />
     </div>
   )
 }

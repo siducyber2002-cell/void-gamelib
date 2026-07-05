@@ -260,7 +260,7 @@ function NotificationBell({ dark }) {
   const [dmSenders, setDmSenders] = useState([]) // [{id, username, avatar_url, count, last_message}]
   const [unread, setUnread]   = useState(0)
   const [shaking, setShaking] = useState(false)
-  const [coords, setCoords]   = useState({ top: 0, right: 0, width: 300 })
+  const [coords, setCoords]   = useState({ top: 0, right: 0, width: 340 })
   const btnRef   = useRef(null) // the bell button — used to measure position
   const panelRef = useRef(null) // the portaled dropdown — used for outside-click detection
 
@@ -349,7 +349,7 @@ function NotificationBell({ dark }) {
     if (btnRef.current) {
       const rect = btnRef.current.getBoundingClientRect()
       const margin = 12
-      const width = Math.min(300, window.innerWidth - margin * 2)
+      const width = Math.min(340, window.innerWidth - margin * 2)
       // Anchor to the bell's right edge, but never let the panel's left
       // edge go past `margin` from the screen edge (was overflowing off
       // narrow mobile viewports before).
@@ -426,45 +426,46 @@ function NotificationBell({ dark }) {
             overflow: 'hidden',
           }}
         >
-          <div style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: text }}>Notifications</span>
-            {unread > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, background: `${accent}18`, color: accent }}>{unread} new</span>}
+          <div style={{ padding: '14px 18px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: text, letterSpacing: '0.01em' }}>Notifications</span>
+            {unread > 0 && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: `${accent}18`, color: accent }}>{unread} new</span>}
           </div>
 
-          <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+          <div style={{ maxHeight: 380, overflowY: 'auto' }}>
             {requests.length === 0 && dmCount === 0 && feed.length === 0 && (
-              <p style={{ textAlign: 'center', color: textMut, fontSize: 12, padding: '24px 0' }}>All caught up 🎮</p>
+              <p style={{ textAlign: 'center', color: textMut, fontSize: 12, padding: '28px 0' }}>You're all caught up</p>
             )}
 
             {requests.map(req => (
               <div
                 key={req.id}
-                onClick={() => { setOpen(false); navigate('/friends?tab=Requests') }}
-                style={{ padding: '12px 16px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                style={{ padding: '13px 18px', borderBottom: `1px solid ${border}`, display: 'flex', alignItems: 'flex-start', gap: 11 }}
               >
                 <div style={{
-                  width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                  width: 34, height: 34, borderRadius: '50%', flexShrink: 0, marginTop: 1,
                   background: `${accent}18`, display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: 13, fontWeight: 700, color: accent,
                 }}>
                   {req.requester?.username?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    <b>{req.requester?.username}</b> sent you a friend request
+                  <p style={{ fontSize: 12.5, fontWeight: 500, color: text, lineHeight: 1.4 }}>
+                    <b style={{ fontWeight: 700 }}>{req.requester?.username || 'Someone'}</b> would like to add you as a friend
                   </p>
                   {req.created_at && (
                     <span style={{ fontSize: 10, color: textMut, fontFamily: "'Share Tech Mono', monospace" }}>{timeAgo(req.created_at)}</span>
                   )}
-                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }} onClick={e => e.stopPropagation()}>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                     <button onClick={() => acceptReq(req.id)} style={{
-                      fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
-                      background: '#16a34a22', color: '#22c55e', border: '1px solid #22c55e44',
-                    }}><Check size={10} style={{ verticalAlign: -1 }} /> Accept</button>
+                      display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700,
+                      padding: '5px 13px', borderRadius: 7, cursor: 'pointer',
+                      background: '#16a34a1f', color: '#22c55e', border: '1px solid #22c55e4a',
+                    }}><Check size={11} /> Accept</button>
                     <button onClick={() => declineReq(req.id)} style={{
-                      fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 6, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700,
+                      padding: '5px 13px', borderRadius: 7, cursor: 'pointer',
                       background: bg, color: textSub, border: `1px solid ${border}`,
-                    }}><X size={10} style={{ verticalAlign: -1 }} /> Decline</button>
+                    }}><X size={11} /> Decline</button>
                   </div>
                 </div>
               </div>
@@ -491,7 +492,7 @@ function NotificationBell({ dark }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <p style={{ fontSize: 12, fontWeight: 600, color: text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
-                      <b>{s.username || 'Someone'}</b> sent you {s.count > 1 ? `${s.count} messages` : 'a message'}
+                      New message from <b>{s.username || 'Someone'}</b>{s.count > 1 ? ` (${s.count})` : ''}
                     </p>
                     <span style={{ fontSize: 10, color: textMut, fontFamily: "'Share Tech Mono', monospace", flexShrink: 0 }}>{timeAgo(s.last_message_at)}</span>
                   </div>

@@ -5,6 +5,7 @@ import { ThemeProvider } from './context/ThemeContext'
 import { LibraryProvider } from './context/LibraryContext'
 import { XPToastProvider } from './components/XPToast'
 import { ChatNotifyProvider } from './context/ChatNotifyContext'
+import BifrostTransition from './components/BifrostTransition'
 
 import Layout from './components/layout/Layout'
 import LoginPage from './pages/LoginPage'
@@ -34,84 +35,106 @@ function VoidLoader() {
       fontFamily: 'DM Sans, sans-serif',
     }}>
       <style>{`
-        @keyframes vl-spin    { from { transform: rotate(0deg); }   to { transform: rotate(360deg); } }
-        @keyframes vl-spinrev { from { transform: rotate(0deg); }   to { transform: rotate(-360deg); } }
-        @keyframes vl-pulse   { 0%,100% { transform: translate(-50%,-50%) scale(1); box-shadow: 0 0 18px 4px rgba(109,40,217,0.18); } 50% { transform: translate(-50%,-50%) scale(1.13); box-shadow: 0 0 32px 10px rgba(109,40,217,0.28); } }
         @keyframes vl-fade    { 0%,100% { opacity: 0.45; } 50% { opacity: 1; } }
-        @keyframes vl-drift1  { 0% { transform: rotate(0deg)   translateX(88px) rotate(0deg); }   100% { transform: rotate(360deg)  translateX(88px) rotate(-360deg); } }
-        @keyframes vl-drift2  { 0% { transform: rotate(200deg) translateX(66px) rotate(-200deg); } 100% { transform: rotate(560deg)  translateX(66px) rotate(-560deg); } }
+        @keyframes vl-orbSpin { to { transform: rotate(360deg); } }
+        @keyframes vl-glow {
+          0%,100% { filter: drop-shadow(0 0 6px rgba(168,85,247,0.25)); }
+          50%      { filter: drop-shadow(0 0 18px rgba(124,58,237,0.5)) drop-shadow(0 0 34px rgba(124,58,237,0.2)); }
+        }
+
+        .vl-o-wrap {
+          position: relative;
+          width: 160px; height: 160px;
+          display: flex; align-items: center; justify-content: center;
+          animation: vl-glow 3.4s ease-in-out infinite;
+        }
+        .vl-orb-ring {
+          position: absolute; border-radius: 40%;
+          border-style: solid; border-color: transparent;
+          pointer-events: none;
+        }
+        .vl-orb-ring-1 {
+          width: 200px; height: 200px;
+          border-top-color: rgba(147,51,234,0.55);
+          border-right-color: rgba(147,51,234,0.2);
+          border-width: 2px;
+          animation: vl-orbSpin 8s linear infinite;
+        }
+        .vl-orb-ring-2 {
+          width: 240px; height: 240px;
+          border-bottom-color: rgba(109,40,217,0.45);
+          border-left-color: rgba(109,40,217,0.15);
+          border-width: 2px;
+          animation: vl-orbSpin 14s linear infinite reverse;
+        }
+        .vl-orb-ring-3 {
+          width: 280px; height: 280px;
+          border-top-color: rgba(168,85,247,0.28);
+          border-right-color: rgba(168,85,247,0.08);
+          border-width: 1.5px;
+          animation: vl-orbSpin 22s linear infinite;
+        }
+        .vl-orb-scanner {
+          position: absolute;
+          width: 200px; height: 200px;
+          border-radius: 50%;
+          border: 2px solid transparent;
+          border-top-color: rgba(192,132,252,0.9);
+          animation: vl-orbSpin 3.5s linear infinite;
+          filter: blur(0.5px);
+        }
       `}</style>
 
-      <div style={{ position: 'relative', width: 220, height: 220, marginBottom: '2.2rem' }}>
+      <div style={{ marginBottom: '2.2rem' }}>
+        <div className="vl-o-wrap">
+          <div className="vl-orb-ring vl-orb-ring-1" />
+          <div className="vl-orb-ring vl-orb-ring-2" />
+          <div className="vl-orb-ring vl-orb-ring-3" />
+          <div className="vl-orb-scanner" />
 
-        {/* Ring 1 — outermost, slow */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          borderRadius: '50%',
-          border: '1.5px solid transparent',
-          borderTopColor: '#b39ddb',
-          borderRightColor: '#b39ddb55',
-          animation: 'vl-spin 7s linear infinite',
-          boxSizing: 'border-box',
-        }} />
+          <svg
+            width="160" height="160"
+            viewBox="0 0 72 72"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            style={{ position: 'relative', zIndex: 1, overflow: 'visible', display: 'block' }}
+          >
+            <defs>
+              <radialGradient id="vl-voidGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#000000" />
+                <stop offset="55%" stopColor="#1a0040" />
+                <stop offset="80%" stopColor="#3b0d7a" stopOpacity="0.6" />
+                <stop offset="100%" stopColor="#000" stopOpacity="0" />
+              </radialGradient>
+              <filter id="vl-glowFilter">
+                <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
+                <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <filter id="vl-glowStrong">
+                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+                <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+            </defs>
 
-        {/* Ring 2 — reverse */}
-        <div style={{
-          position: 'absolute', inset: 22,
-          borderRadius: '50%',
-          border: '1px solid transparent',
-          borderBottomColor: '#9575cd',
-          borderLeftColor: '#9575cd44',
-          animation: 'vl-spinrev 5s linear infinite',
-          boxSizing: 'border-box',
-        }} />
-
-        {/* Ring 3 — inner, faster */}
-        <div style={{
-          position: 'absolute', inset: 42,
-          borderRadius: '50%',
-          border: '1px solid transparent',
-          borderTopColor: '#ce93d8',
-          borderRightColor: '#ce93d833',
-          animation: 'vl-spin 3.5s linear infinite',
-          boxSizing: 'border-box',
-        }} />
-
-        {/* Ring 4 — innermost arc */}
-        <div style={{
-          position: 'absolute', inset: 60,
-          borderRadius: '50%',
-          border: '1px solid transparent',
-          borderBottomColor: '#d1c4e9',
-          borderLeftColor: 'transparent',
-          animation: 'vl-spinrev 2.5s linear infinite',
-          boxSizing: 'border-box',
-        }} />
-
-        {/* Orbiting dot 1 */}
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%',
-          width: 5, height: 5, marginTop: -2.5, marginLeft: -2.5,
-          borderRadius: '50%', background: '#9575cd',
-          animation: 'vl-drift1 5s linear infinite',
-        }} />
-
-        {/* Orbiting dot 2 */}
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%',
-          width: 3.5, height: 3.5, marginTop: -1.75, marginLeft: -1.75,
-          borderRadius: '50%', background: '#ce93d8',
-          animation: 'vl-drift2 4s linear infinite',
-        }} />
-
-        {/* Core orb */}
-        <div style={{
-          position: 'absolute', top: '50%', left: '50%',
-          width: 48, height: 48,
-          borderRadius: '50%',
-          background: 'radial-gradient(circle at 38% 35%, #4a148c, #1a0533 70%, #0d0117)',
-          animation: 'vl-pulse 2.6s ease-in-out infinite',
-        }} />
+            <circle cx="36" cy="36" r="32" fill="url(#vl-voidGlow)" opacity="0.7" />
+            <path d="M36 10 C50 14 58 24 56 36 C54 48 44 56 36 54" stroke="rgba(109,40,217,0.25)" strokeWidth="6" fill="none" strokeLinecap="round" />
+            <path d="M36 10 C22 14 14 24 16 36 C18 48 28 56 36 54" stroke="rgba(76,29,149,0.2)" strokeWidth="5" fill="none" strokeLinecap="round" />
+            <path d="M36 8 C54 10 64 22 62 36 C60 50 48 60 36 62" stroke="rgba(147,51,234,0.15)" strokeWidth="3" fill="none" strokeLinecap="round" />
+            <path d="M36 8 C18 10 8 22 10 36 C12 50 24 60 36 62" stroke="rgba(109,40,217,0.12)" strokeWidth="3" fill="none" strokeLinecap="round" />
+            <circle cx="36" cy="36" r="22" fill="#2a1060" />
+            <circle cx="36" cy="36" r="26" stroke="#9333ea" strokeWidth="3.5" fill="none" filter="url(#vl-glowStrong)" />
+            <circle cx="36" cy="36" r="23" stroke="#7c3aed" strokeWidth="1" fill="none" opacity="0.6" />
+            <path d="M 17 28 A 22 22 0 0 1 36 14" stroke="#c084fc" strokeWidth="3" fill="none" strokeLinecap="round" filter="url(#vl-glowFilter)" />
+            <path d="M 20 31 A 18 18 0 0 1 36 17" stroke="rgba(232,180,255,0.7)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+            <circle cx="36" cy="36" r="28" stroke="#6d28d9" strokeWidth="6" fill="none" opacity="0.25" />
+            <circle cx="36" cy="36" r="30" stroke="#4c1d95" strokeWidth="4" fill="none" opacity="0.12" />
+            <circle cx="24" cy="20" r="1" fill="#c084fc" opacity="0.7" />
+            <circle cx="48" cy="18" r="0.8" fill="#a855f7" opacity="0.5" />
+            <circle cx="52" cy="40" r="1.2" fill="#c084fc" opacity="0.6" />
+            <circle cx="20" cy="50" r="0.9" fill="#9333ea" opacity="0.5" />
+            <circle cx="42" cy="58" r="0.7" fill="#a855f7" opacity="0.4" />
+          </svg>
+        </div>
       </div>
 
       {/* Title */}
@@ -152,6 +175,11 @@ export default function App() {
               <Toaster position="top-right" toastOptions={{
                 style: { fontFamily: 'DM Sans, sans-serif', borderRadius: '12px', fontSize: '14px' }
               }} />
+              {/* Mounted once, outside <Routes>, so it survives the login -> home
+                  route swap it triggers. LoginPage calls bifrostBus.trigger()
+                  on successful login; this plays the beam, swaps the route to
+                  "/" underneath itself, then dissolves to reveal it. */}
+              <BifrostTransition />
               {/* ChatNotifyProvider needs to be inside BrowserRouter (it uses
                   useNavigate to jump straight to a DM when a toast is
                   clicked) but wraps every route so its socket + toast stay
