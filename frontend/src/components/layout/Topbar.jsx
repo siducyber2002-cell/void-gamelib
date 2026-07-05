@@ -318,6 +318,8 @@ function NotificationBell({ dark }) {
     return xpEventBus.subscribe((event) => {
       if (event.kind === 'xp' || event.kind === 'level_up') {
         setTimeout(fetchNotifs, 300) // tiny delay so the backend write lands first
+      } else if (event.kind === 'new_dm' || event.kind === 'friend_request' || event.kind === 'friend_accepted') {
+        fetchNotifs() // already committed server-side before the push fired — no delay needed
       }
     })
   }, [fetchNotifs])

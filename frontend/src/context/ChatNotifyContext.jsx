@@ -1,45 +1,70 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { MessageCircle, UserPlus, Users } from 'lucide-react'
 import { useAuth } from './AuthContext'
+import { xpEventBus } from '../components/XPToast'
 
 const ChatNotifyContext = createContext({
   activeChatFriendId: null,
   setActiveChatFriendId: () => {},
 })
 
-// Generic toast card — used for new DM, friend request, and friend accepted.
-function NotifyToastCard({ t, avatarUrl, username, subtitle, onOpen }) {
+const TYPE_META = {
+  new_dm:          { icon: MessageCircle, accent: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #06b6d4)' },
+  friend_request:  { icon: UserPlus,      accent: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #059669)' },
+  friend_accepted: { icon: Users,         accent: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #06b6d4)' },
+}
+
+function NotifyToastCard({ t, type, avatarUrl, username, subtitle, onOpen }) {
+  const meta = TYPE_META[type]
+  const Icon = meta.icon
   return (
     <div
       onClick={onOpen}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10,
-        background: '#13131f', border: '1px solid rgba(168,85,247,0.35)',
-        borderRadius: 14, padding: '10px 14px', minWidth: 260, maxWidth: 320,
-        boxShadow: '0 8px 24px rgba(0,0,0,0.45)', cursor: 'pointer',
-        opacity: t.visible ? 1 : 0, transform: t.visible ? 'translateY(0)' : 'translateY(-6px)',
-        transition: 'opacity 0.2s, transform 0.2s',
+        position: 'relative', display: 'flex', alignItems: 'center', gap: 12,
+        padding: '12px 16px', borderRadius: 16, minWidth: 270, maxWidth: 330,
+        background: 'rgba(13,13,26,0.94)', border: `1px solid ${meta.accent}40`,
+        backdropFilter: 'blur(16px)', overflow: 'hidden', cursor: 'pointer',
+        boxShadow: `0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px ${meta.accent}18, 0 4px 16px ${meta.accent}30`,
+        transform: t.visible ? 'translateX(0) scale(1)' : 'translateX(110%) scale(0.94)',
+        opacity: t.visible ? 1 : 0,
+        transition: 'all 0.4s cubic-bezier(0.34,1.56,0.64,1)',
       }}
     >
-      <div style={{
-        width: 34, height: 34, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
-        background: '#a855f722', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#a855f7', fontWeight: 700, fontSize: 14,
-      }}>
-        {avatarUrl
-          ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : (username?.[0]?.toUpperCase() || '?')}
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: '#eae8ff' }}>{username}</p>
-        <p style={{
-          margin: '2px 0 0', fontSize: 12, color: '#a5b4fc',
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: '50%', overflow: 'hidden',
+          background: `${meta.accent}22`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: meta.accent, fontWeight: 700, fontSize: 15, border: `1.5px solid ${meta.accent}55`,
         }}>
+          {avatarUrl
+            ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            : (username?.[0]?.toUpperCase() || '?')}
+        </div>
+        <div style={{
+          position: 'absolute', bottom: -3, right: -3, width: 18, height: 18, borderRadius: '50%',
+          background: meta.gradient, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          border: '2px solid #0d0d1a', boxShadow: `0 2px 6px ${meta.accent}60`,
+        }}>
+          <Icon size={10} color="#fff" strokeWidth={3} />
+        </div>
+      </div>
+
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#eae8ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {username}
+        </p>
+        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#a0a0c0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {subtitle}
         </p>
       </div>
+
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: `${meta.accent}20` }}>
+        <div style={{ height: '100%', background: meta.gradient, animation: 'dmToastProgress 3000ms linear forwards' }} />
+      </div>
+      <style>{`@keyframes dmToastProgress { from { width: 100%; } to { width: 0%; } }`}</style>
     </div>
   )
 }
@@ -106,10 +131,16 @@ export function ChatNotifyProvider({ children }) {
         const { subtitle, path } = build(data)
         const toastId = `${data.type}-${data.sender_id}-${data.id}`
 
+        // Bell already listens on xpEventBus (for xp/level_up) and refetches
+        // on any event — piggyback on it so the unread badge updates the
+        // instant this arrives, instead of waiting on its ~12s poll.
+        xpEventBus.emit({ kind: data.type })
+
         toast.custom(
           (t) => (
             <NotifyToastCard
               t={t}
+              type={data.type}
               avatarUrl={data.sender_avatar_url}
               username={data.sender_username}
               subtitle={subtitle}
