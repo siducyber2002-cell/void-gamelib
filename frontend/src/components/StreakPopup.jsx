@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 
@@ -14,7 +15,18 @@ export default function StreakPopup() {
 
   if (!showStreakPopup || !streak) return null
 
-  return (
+  // Rendered through a portal straight to document.body. `position: fixed`
+  // is supposed to pin an element to the viewport no matter how far the
+  // page is scrolled — but that breaks the moment ANY ancestor has a
+  // `transform`, `filter`, `perspective`, or `will-change` style, because
+  // that ancestor becomes the new containing block instead of the
+  // viewport. That's almost certainly why this was only showing up near
+  // the top of the page and disappearing on scroll — some wrapper further
+  // up the tree (a page-transition wrapper, an animated layout container,
+  // etc.) has one of those properties. Portaling to <body> sidesteps that
+  // ancestor chain entirely, so this will now stay pinned top-right
+  // regardless of scroll position or which page you're on.
+  return createPortal(
     <div className="fixed top-6 right-6 z-50 animate-slide-up">
       <div
         className={`flex items-center gap-4 rounded-2xl border px-5 py-4 shadow-card-hover font-body ${
@@ -50,6 +62,7 @@ export default function StreakPopup() {
           ×
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

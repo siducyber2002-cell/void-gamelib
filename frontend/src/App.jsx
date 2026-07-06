@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
@@ -172,9 +173,25 @@ export default function App() {
         <LibraryProvider>
           <XPToastProvider>
             <BrowserRouter>
-              <Toaster position="top-right" toastOptions={{
-                style: { fontFamily: 'DM Sans, sans-serif', borderRadius: '12px', fontSize: '14px' }
-              }} />
+              {/* Portaled straight to document.body. <Toaster> was previously
+                  just a normal child several context-providers deep
+                  (ThemeProvider > AuthProvider > LibraryProvider >
+                  XPToastProvider). `position: fixed` only pins to the
+                  viewport if NO ancestor has a `transform`, `filter`,
+                  `perspective`, or `will-change` style — if any of those
+                  providers (or something inside them) renders a wrapping
+                  div with one of those, it silently turns "fixed" into
+                  "positioned relative to that ancestor" instead of the
+                  screen, which is exactly the "toast only shows near the
+                  top, disappears on scroll" bug. Portaling sidesteps every
+                  ancestor in the tree, so this is now correct regardless of
+                  what those providers do internally. */}
+              {createPortal(
+                <Toaster position="top-right" toastOptions={{
+                  style: { fontFamily: 'DM Sans, sans-serif', borderRadius: '12px', fontSize: '14px' }
+                }} />,
+                document.body
+              )}
               {/* Mounted once, outside <Routes>, so it survives the login -> home
                   route swap it triggers. LoginPage calls bifrostBus.trigger()
                   on successful login; this plays the beam, swaps the route to

@@ -17,9 +17,11 @@ export default function LoginPage() {
   const [glitchText, setGlitchText] = useState('Enter The Void')
   const [videoLoaded, setVideoLoaded] = useState(false)
   const [capturing, setCapturing] = useState(false) // true for the one frame we snapshot for the freeze
+  const [hideO, setHideO] = useState(false) // true once the O has "dropped" — keeps its spot in the frozen screenshot vacant
   const YT_VIDEO_ID = 'f3st1DfrvIc';
   const rootRef = useRef(null)    // whole page — this is what gets snapshotted and shattered
   const loginBtnRef = useRef(null) // the crack starts here, right where you clicked
+  const logoORef = useRef(null)    // the VOID "O" — measured on submit so Bifrost knows where the kicked ball starts from
 
   const taglines = [
     'Enter The Void',
@@ -49,12 +51,21 @@ export default function LoginPage() {
     // while the button/root are still guaranteed to be in the DOM.
     const btnRect = loginBtnRef.current?.getBoundingClientRect()
     const rootRect = rootRef.current?.getBoundingClientRect()
+    const oRect = logoORef.current?.getBoundingClientRect()
     const impact = (btnRect && rootRect)
       ? {
           xPct: ((btnRect.left + btnRect.width / 2 - rootRect.left) / rootRect.width) * 100,
           yPct: ((btnRect.top + btnRect.height / 2 - rootRect.top) / rootRect.height) * 100,
         }
       : { xPct: 50, yPct: 90 }
+    // Where the VOID "O" logo sits, in the same rootRect-relative terms —
+    // this is where Bifrost's kicked ball drops from on a successful login.
+    const origin = (oRect && rootRect)
+      ? {
+          xPct: ((oRect.left + oRect.width / 2 - rootRect.left) / rootRect.width) * 100,
+          yPct: ((oRect.top + oRect.height / 2 - rootRect.top) / rootRect.height) * 100,
+        }
+      : { xPct: 12, yPct: 12 }
 
     try {
       // html-to-image renders the DOM through an SVG <foreignObject>, and
@@ -66,7 +77,13 @@ export default function LoginPage() {
       // playback position, so it always showed the same random frame no
       // matter when you clicked. A flat gradient is the honest fix — no
       // network fetch, no wrong-scene pop-in, always identical.
+      // Hide the real O before we snapshot the page — otherwise it'd be
+      // baked into the frozen image, and the "dropped" ball in Bifrost
+      // would just be a second O overlapping a first one that never left.
+      // Hiding it here first means the frozen screenshot shows a genuinely
+      // vacant spot where the O used to be.
       setCapturing(true)
+      setHideO(true)
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
       const image = await toPng(rootRef.current, { cacheBust: true, pixelRatio: 1 })
@@ -92,11 +109,13 @@ export default function LoginPage() {
 
       // Only now, on confirmed success, does the void ball hit and the
       // page crack apart to reveal the homepage underneath.
-      bifrostBus.shatter({ impact })
+      bifrostBus.shatter({ impact, origin })
     } catch (err) {
       // Login failed — drop the frozen overlay instantly. Nothing behind
-      // it ever changed, so the login page is right there, unchanged.
+      // it ever changed, so the login page is right there, unchanged —
+      // including putting the real O back, since it's staying on screen.
       setCapturing(false)
+      setHideO(false)
       bifrostBus.cancel()
       toast.error(err.response?.data?.detail || 'Invalid credentials')
     } finally {
@@ -845,7 +864,11 @@ export default function LoginPage() {
               <span className="wm-v">V</span>
 
               {/* ── O ── glowing purple black hole portal with orbital rings */}
-              <span className="wm-o-wrap">
+              <span
+                className="wm-o-wrap"
+                ref={logoORef}
+                style={{ opacity: hideO ? 0 : 1 }}
+              >
                 {/* Animated orbital rings (CSS) */}
                 <span className="orb-ring orb-ring-1" />
                 <span className="orb-ring orb-ring-2" />

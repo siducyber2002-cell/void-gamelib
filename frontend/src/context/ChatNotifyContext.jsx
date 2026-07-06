@@ -76,14 +76,21 @@ const EVENT_CONFIG = {
   friend_accepted:   (d) => ({ subtitle: 'Accepted your friend request', path: '/friends?tab=Friends' }),
 }
 
-// Dedupe key so a request/accept that arrived while offline only ever
-// toasts once, even across page reloads or reconnects.
-const SEEN_KEY = 'gl_seen_notify_events'
-const getSeen  = () => { try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY)) || []) } catch { return new Set() } }
-const markSeen = (id) => {
-  const s = getSeen(); s.add(id)
-  localStorage.setItem(SEEN_KEY, JSON.stringify([...s].slice(-300)))
+// Dedupe key so a request/accept only ever toasts once — whether it arrives
+// live over the socket or gets picked up later by the offline catch-up.
+// Scoped per-user so multiple accounts on the same browser don't share
+// (or leak) each other's seen state.
+const SEEN_KEY_PREFIX = 'gl_seen_notify_events'
+const getSeenKey = (userId) => `${SEEN_KEY_PREFIX}_${userId ?? 'anon'}`
+const getSeen  = (userId) => { try { return new Set(JSON.parse(localStorage.getItem(getSeenKey(userId))) || []) } catch { return new Set() } }
+const markSeen = (userId, id) => {
+  const s = getSeen(userId); s.add(id)
+  localStorage.setItem(getSeenKey(userId), JSON.stringify([...s].slice(-300)))
 }
+
+// Only these types need de-duping against the offline catch-up. `new_dm`
+// isn't re-fetched by catch-up, so it doesn't need a seen-key.
+const DEDUPE_TYPES = new Set(['friend_request', 'friend_accepted'])
 
 // Module-level (not per-render) lock — React 18 Strict Mode mounts effects
 // twice in dev, so without this, two overlapping catchUp() calls can both
@@ -93,6 +100,7 @@ let catchUpInFlight = false
 export function ChatNotifyProvider({ children }) {
   const { user, token } = useAuth()
   const navigate = useNavigate()
+  const userId = user?.id
 
   // Which friend's DM panel is currently open, anywhere in the app. While
   // it's open for a given sender, an incoming message from them is already
@@ -107,7 +115,7 @@ export function ChatNotifyProvider({ children }) {
   const reconnectAttempt  = useRef(0)
 
   useEffect(() => {
-    if (!token || !user) {
+    if (!token || !userId) {
       if (wsRef.current) {
         wsRef.current.onclose = null
         wsRef.current.close()
@@ -118,10 +126,30 @@ export function ChatNotifyProvider({ children }) {
 
     let stopped = false
 
+    // `alreadySeen` marks the event as seen (for dedupe-able types) BEFORE
+    // rendering the toast. This is the key fix: previously only the offline
+    // catch-up path called markSeen(), so anything that arrived live never
+    // got recorded — meaning the very next reconnect / login / catch-up run
+    // would see it as "unseen" and fire it again, giving the repeated /
+    // double / triple toast behavior.
     const fireToast = (data) => {
       const build = EVENT_CONFIG[data.type]
       if (!build) return
       if (data.type === 'new_dm' && activeChatFriendIdRef.current === data.sender_id) return
+
+      if (DEDUPE_TYPES.has(data.type)) {
+        if (data.id == null) {
+          // Defensive: if the backend payload for this event type doesn't
+          // include a stable id, we can't dedupe it reliably. Log so it's
+          // visible during testing rather than silently double-firing.
+          console.warn(`[ChatNotify] "${data.type}" event missing an id — cannot dedupe`, data)
+        } else {
+          const key = `${data.type}-${data.id}`
+          const seen = getSeen(userId)
+          if (seen.has(key)) return
+          markSeen(userId, key)
+        }
+      }
 
       const { subtitle, path } = build(data)
       const toastId = `${data.type}-${data.sender_id}-${data.id}`
@@ -146,13 +174,13 @@ export function ChatNotifyProvider({ children }) {
     // Catch up on anything that happened while you were offline — a friend
     // request/accept sent to an offline user has nowhere to go live, so on
     // login/reconnect we pull recent ones and toast whatever hasn't been
-    // shown yet (tracked via SEEN_KEY, so it only ever fires once).
+    // shown yet (tracked via the per-user seen set, so it only ever fires
+    // once, whether it was already shown live or not).
     const catchUp = async () => {
       if (catchUpInFlight) return
       catchUpInFlight = true
       try {
         const axios = (await import('axios')).default
-        const seen = getSeen()
         const [{ data: requests }, { data: notifs }] = await Promise.all([
           axios.get('/api/friends/requests'),
           axios.get('/api/xp/notifications?limit=20'),
@@ -160,9 +188,6 @@ export function ChatNotifyProvider({ children }) {
         if (stopped) return
 
         requests.forEach((r) => {
-          const key = `friend_request-${r.id}`
-          if (seen.has(key)) return
-          markSeen(key)
           fireToast({
             type: 'friend_request', id: r.id, sender_id: r.requester_id,
             sender_username: r.requester?.username, sender_avatar_url: r.requester?.avatar_url,
@@ -170,9 +195,6 @@ export function ChatNotifyProvider({ children }) {
         })
 
         notifs.filter((n) => n.type === 'friend_accepted').forEach((n) => {
-          const key = `friend_accepted-${n.id}`
-          if (seen.has(key)) return
-          markSeen(key)
           fireToast({
             type: 'friend_accepted', id: n.id, sender_id: n.id,
             sender_username: n.detail || 'Someone', sender_avatar_url: null,
@@ -230,8 +252,11 @@ export function ChatNotifyProvider({ children }) {
         wsRef.current = null
       }
     }
-    // token/user changes = login/logout; reconnect fresh each time.
-  }, [token, user, navigate])
+    // Depend on userId (stable primitive), not the user object — AuthContext
+    // may hand back a new object reference on unrelated renders, which would
+    // otherwise tear down and reconnect the socket (and re-run catchUp)
+    // far more often than an actual login/logout.
+  }, [token, userId, navigate])
 
   return (
     <ChatNotifyContext.Provider value={{ activeChatFriendId, setActiveChatFriendId }}>

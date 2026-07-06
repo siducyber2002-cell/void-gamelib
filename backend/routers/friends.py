@@ -75,6 +75,10 @@ async def send_request(
     db.commit()
     db.refresh(fs)
 
+    # NOTE: friend_request stays keyed on the Friendship id (fs.id) — that
+    # already matches what GET /api/friends/requests returns for catch-up
+    # (it also lists raw Friendship rows), so live + catch-up already agree
+    # here. Only friend_accepted below had the mismatch.
     await push_to_user(user_id, {
         "type":              "friend_request",
         "id":                fs.id,
@@ -132,16 +136,6 @@ async def accept_request(
                 read=False,
                 created_at=datetime.utcnow(),
             ))
-            db.add(Notification(
-                user_id=requester.id,
-                type="friend_accepted",
-                message=f"🎉 {current_user.username} accepted your friend request!",
-                xp_earned=0,
-                action="friend_accepted",
-                detail=current_user.username,
-                read=False,
-                created_at=datetime.utcnow(),
-            ))
             if leveled_up:
                 db.add(Notification(
                     user_id=requester.id,
@@ -153,11 +147,38 @@ async def accept_request(
                     read=False,
                     created_at=datetime.utcnow(),
                 ))
-            db.commit()
+
+        # The friend_accepted Notification is now created unconditionally
+        # (previously it lived inside `if xp:`, so if made_friend XP was
+        # ever set to 0 the notification — and therefore any record for
+        # catch-up to find — would silently stop being created at all).
+        #
+        # THE ACTUAL DUPLICATE-TOAST BUG: this used to push the live event
+        # with "id": fs.id (the friendship id), while the frontend's
+        # offline catch-up reads from /api/xp/notifications and keys off
+        # the Notification row's own id instead. Those two ids never
+        # matched, so the same accept always produced two different toast
+        # keys — one from the live push, one from catch-up — and both
+        # rendered. Now we create the Notification first, flush it to get
+        # its real id, and push that same id live so both paths agree on
+        # what "this event" is.
+        accepted_notif = Notification(
+            user_id=requester.id,
+            type="friend_accepted",
+            message=f"🎉 {current_user.username} accepted your friend request!",
+            xp_earned=0,
+            action="friend_accepted",
+            detail=current_user.username,
+            read=False,
+            created_at=datetime.utcnow(),
+        )
+        db.add(accepted_notif)
+        db.commit()
+        db.refresh(accepted_notif)
 
         await push_to_user(requester.id, {
             "type":              "friend_accepted",
-            "id":                fs.id,
+            "id":                accepted_notif.id,
             "sender_id":         current_user.id,
             "sender_username":   current_user.username,
             "sender_avatar_url": getattr(current_user, "avatar_url", None),

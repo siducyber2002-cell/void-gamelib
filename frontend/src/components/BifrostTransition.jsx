@@ -13,19 +13,26 @@ import { useNavigate } from 'react-router-dom'
 //      on screen — so nothing underneath can flash through while the
 //      request is in flight.
 //
-//   2. bifrostBus.shatter({ impact: { xPct, yPct } })
-//      Called only once login actually succeeds. The sequence:
-//        a) the VOID "O" portal mark is thrown in from the user's side of
-//           the screen, spinning, and arcs into the impact point
-//        b) on the hit: a crater punches in and debris flecks burst
+//   2. bifrostBus.shatter({ impact: { xPct, yPct }, origin: { xPct, yPct } })
+//      Called only once login actually succeeds. `origin` is where the VOID
+//      "O" logo sits on screen at that moment; `impact` is the login button.
+//      The sequence:
+//        a) the O drops straight down off the logo, like a dropped ball,
+//           and comes to rest near the bottom-left of the screen
+//        b) a stick figure jogs in from off-screen left, in slow motion
+//        c) it plants and swings through a slow-motion bicycle kick —
+//           partway through the swing, the ball launches
+//        d) the ball arcs, spinning, across the screen and slams into the
+//           login button
+//        e) on the hit: a crater punches in and debris flecks burst
 //           outward — instant damage, before anything cracks
-//        c) a beat later, a crack slowly spiders out from that same
+//        f) a beat later, a crack slowly spiders out from that same
 //           point — short, then medium, then splitting the whole page —
 //           while the homepage is already sitting there underneath, waiting
-//        d) the page splits into 7 mirror-shard pieces radiating from the
+//        g) the page splits into 7 mirror-shard pieces radiating from the
 //           impact point, which then fall away one at a time, each fall
 //           uncovering its own slice of the homepage until all 7 are gone
-//      ~6-7 seconds total.
+//      ~9-10 seconds total.
 //
 //   3. bifrostBus.cancel()
 //      Called if login fails. Instantly drops the frozen overlay — since
@@ -39,8 +46,12 @@ export const bifrostBus = {
   subscribe: (cb) => { listeners.add(cb); return () => listeners.delete(cb) },
 }
 
-// ── Timing — tuned to land the whole sequence at ~6.5-7s from impact ──
-const BALL_MS = 750          // the ball's flight from the user's side to the impact point
+// ── Timing — tuned to land the whole sequence at ~9.5-10s from impact ──
+const DROP_MS = 700          // the O drops off the logo down to the ground
+const RUN_MS = 1300          // the stick figure's slow-motion run-in
+const KICK_MS = 900          // the slow-motion bicycle-kick swing
+const KICK_LAUNCH_PCT = 0.55 // the ball launches 55% through the kick swing
+const FLY_MS = 680           // the ball's flight from the ground to the impact point
 const IMPACT_MS = 260        // crater + debris punching outward, before the cracks start spreading
 const CRACK_MS = 2100        // the crack slowly spidering from short → medium → full-page
 const HOLD_MS = 250          // a beat of stillness once the crack is complete, before it lets go
@@ -190,11 +201,11 @@ function buildCrater(width, height, impactXPct, impactYPct) {
 }
 
 export default function BifrostTransition() {
-  const [phase, setPhase] = useState('idle') // idle | held | ball | impact | crack | pieces | falling
+  const [phase, setPhase] = useState('idle') // idle | held | drop | run | kick | fly | impact | crack | pieces | falling
   const [payload, setPayload] = useState(null)
   const [shatter, setShatterState] = useState(null) // { dividers, pieces }
   const [crater, setCrater] = useState(null) // { ix, iy, rimPoints, dentPoints, debris }
-  const [ballVec, setBallVec] = useState({ fx: 0, fy: 0, mx: 0, my: 0 })
+  const [kickGeo, setKickGeo] = useState(null) // { originX, originY, groundX, groundY, impactX, impactY }
   const navigate = useNavigate()
   const timers = useRef([])
   const raf = useRef([])
@@ -225,57 +236,78 @@ export default function BifrostTransition() {
     if (!held.current) return
     const { width, height } = held.current
     const impact = data?.impact || { xPct: 50, yPct: 90 }
+    // Where the VOID "O" logo sits on screen right now — falls back to
+    // roughly the logo's usual top-left spot if it couldn't be measured.
+    const origin = data?.origin || { xPct: 12, yPct: 12 }
+
     const impactX = (impact.xPct / 100) * width
     const impactY = (impact.yPct / 100) * height
+    const originX = (origin.xPct / 100) * width
+    const originY = (origin.yPct / 100) * height
+    // Ground level the O drops to, and where the stick figure meets it —
+    // a little in from the left edge, near the bottom of the frame.
+    const groundX = Math.max(originX - width * 0.03, width * 0.12)
+    const groundY = height * 0.85
 
-    // The ball is thrown from the user's side — bottom-center of the
-    // screen, as if lobbed up from in front of it — and arcs in to the
-    // impact point, overshooting slightly before it settles on the hit.
-    const startX = width / 2
-    const startY = height + 150
-    setBallVec({
-      fx: startX - impactX,
-      fy: startY - impactY,
-      mx: (startX - impactX) * 0.18,
-      my: -55,
-    })
-
+    setKickGeo({ originX, originY, groundX, groundY, impactX, impactY })
     setPayload(prev => ({ ...prev, impactXPct: impact.xPct, impactYPct: impact.yPct }))
-    setPhase('ball')
 
-    timers.current.push(setTimeout(() => {
-      // Ball has landed — impact! Crater punches in and debris flecks burst
-      // outward instantly. The cracks haven't started yet; this is pure
-      // "damage" on the surface first.
+    const at = (ms, fn) => timers.current.push(setTimeout(fn, ms))
+    let t = 0
+
+    // 1) The O drops off the logo.
+    setPhase('drop')
+    t += DROP_MS
+
+    // 2) The stick figure jogs in, slow motion.
+    at(t, () => setPhase('run'))
+    t += RUN_MS
+
+    // 3) It plants and swings through the bicycle kick. The ball launches
+    // partway through the swing, not at the very end of it.
+    at(t, () => setPhase('kick'))
+    at(t + KICK_MS * KICK_LAUNCH_PCT, () => setPhase('fly'))
+    t += KICK_MS
+
+    // 4) The ball is already airborne (from the 'fly' timer above) — this
+    // just advances the clock past its flight before impact lands.
+    t += FLY_MS
+
+    // 5) Impact! Crater punches in and debris flecks burst outward
+    // instantly. The cracks haven't started yet; this is pure "damage" on
+    // the surface first.
+    at(t, () => {
       setCrater(buildCrater(width, height, impact.xPct, impact.yPct))
       setPhase('impact')
+    })
+    t += IMPACT_MS
 
-      timers.current.push(setTimeout(() => {
-        // Impact has registered — now the crack spiders out from the
-        // crater across the whole page.
-        setShatterState(buildMirrorShatter(width, height, impact.xPct, impact.yPct))
-        setPhase('crack')
+    // 6) Impact has registered — now the crack spiders out from the
+    // crater across the whole page.
+    at(t, () => {
+      setShatterState(buildMirrorShatter(width, height, impact.xPct, impact.yPct))
+      setPhase('crack')
+    })
+    t += CRACK_MS + HOLD_MS
 
-        timers.current.push(setTimeout(() => {
-          // Crack is fully drawn. Swap to the (still seamless, still whole-
-          // looking) 7-piece layout one paint ahead of navigating, so the
-          // route change is hidden behind intact-looking pieces.
-          setPhase('pieces')
-          raf.current.push(requestAnimationFrame(() => {
-            raf.current.push(requestAnimationFrame(() => {
-              navigate('/')
-              timers.current.push(setTimeout(() => {
-                setPhase('falling')
-                timers.current.push(setTimeout(() => {
-                  setPhase('idle')
-                  held.current = null
-                }, NUM_PIECES * PIECE_STAGGER_MS + PIECE_DUR_MAX + 150))
-              }, NAV_GUARD_MS))
-            }))
-          }))
-        }, CRACK_MS + HOLD_MS))
-      }, IMPACT_MS))
-    }, BALL_MS))
+    // 7) Crack is fully drawn. Swap to the (still seamless, still whole-
+    // looking) 7-piece layout one paint ahead of navigating, so the route
+    // change is hidden behind intact-looking pieces.
+    at(t, () => {
+      setPhase('pieces')
+      raf.current.push(requestAnimationFrame(() => {
+        raf.current.push(requestAnimationFrame(() => {
+          navigate('/')
+          timers.current.push(setTimeout(() => {
+            setPhase('falling')
+            timers.current.push(setTimeout(() => {
+              setPhase('idle')
+              held.current = null
+            }, NUM_PIECES * PIECE_STAGGER_MS + PIECE_DUR_MAX + 150))
+          }, NAV_GUARD_MS))
+        }))
+      }))
+    })
   }
 
   const doCancel = () => {
@@ -297,11 +329,16 @@ export default function BifrostTransition() {
   if (phase === 'idle' || !payload) return null
 
   const { image, width, height, left, top, impactXPct = 50, impactYPct = 90 } = payload
-  const showWhole = phase === 'held' || phase === 'ball' || phase === 'impact' || phase === 'crack'
+  const showWhole = phase === 'held' || phase === 'drop' || phase === 'run' || phase === 'kick' || phase === 'fly' || phase === 'impact' || phase === 'crack'
   const showPieces = phase === 'pieces' || phase === 'falling'
   const showCracks = phase === 'crack' || phase === 'pieces' || phase === 'falling'
   const showCrater = phase === 'impact' || phase === 'crack' || phase === 'pieces'
   const isFalling = phase === 'falling'
+  const showBall = phase === 'drop' || phase === 'run' || phase === 'kick' || phase === 'fly'
+  const showStick = phase === 'run' || phase === 'kick' || phase === 'fly'
+  const {
+    originX = 0, originY = 0, groundX = 0, groundY = 0, impactX = 0, impactY = 0,
+  } = kickGeo || {}
 
   return (
     <div className="bf-overlay">
@@ -347,31 +384,161 @@ export default function BifrostTransition() {
           opacity: 0;
         }
 
-        /* ── Void ball — the VOID "O" portal mark, thrown from the user's side ── */
+        /* ── The kicked ball — the VOID "O" logo mark, dropped and kicked ── */
         .bf-ball {
           position: absolute;
-          left: ${impactXPct}%; top: ${impactYPct}%;
+          left: ${originX}px; top: ${originY}px;
           width: 0; height: 0;
           filter: drop-shadow(0 0 16px rgba(168,85,247,0.7)) drop-shadow(0 0 34px rgba(124,58,237,0.4));
-          transform: translate(-50%, -50%) translate(${ballVec.fx}px, ${ballVec.fy}px) scale(2.2);
-          opacity: 0.9;
-          animation: bf-ballThrow ${BALL_MS}ms cubic-bezier(0.33, 0, 0.4, 1) forwards;
+        }
+        .bf-ball.bf-ball-drop {
+          animation: bf-ballDrop ${DROP_MS}ms cubic-bezier(0.4, 0, 0.7, 1) forwards;
+        }
+        @keyframes bf-ballDrop {
+          0%   { transform: translate(-50%, -50%) translate(0, 0) scale(1); }
+          62%  { transform: translate(-50%, -50%) translate(${(groundX - originX) * 0.9}px, ${groundY - originY}px) scale(1); }
+          80%  { transform: translate(-50%, -50%) translate(${(groundX - originX) * 0.97}px, ${(groundY - originY) * 0.92}px) scale(1); }
+          100% { transform: translate(-50%, -50%) translate(${groundX - originX}px, ${groundY - originY}px) scale(1); }
+        }
+        .bf-ball.bf-ball-rest {
+          transform: translate(-50%, -50%) translate(${groundX - originX}px, ${groundY - originY}px) scale(1);
+        }
+        .bf-ball.bf-ball-fly {
+          animation: bf-ballFly ${FLY_MS}ms cubic-bezier(0.3, 0, 0.35, 1) forwards;
+        }
+        @keyframes bf-ballFly {
+          0%   { transform: translate(-50%, -50%) translate(${groundX - originX}px, ${groundY - originY}px) scale(1); opacity: 1; }
+          45%  { transform: translate(-50%, -50%) translate(${(groundX + impactX) / 2 - originX}px, ${Math.min(groundY, impactY) - 130 - originY}px) scale(0.9); opacity: 1; }
+          100% { transform: translate(-50%, -50%) translate(${impactX - originX}px, ${impactY - originY}px) scale(0.6); opacity: 1; }
         }
         .bf-ball-orb {
           position: absolute;
           left: -32px; top: -32px;
           overflow: visible;
-          animation: bf-ballSpin 650ms linear infinite;
+        }
+        .bf-ball-drop .bf-ball-orb,
+        .bf-ball-rest .bf-ball-orb {
+          animation: bf-ballWobble 900ms ease-in-out infinite;
+        }
+        .bf-ball-fly .bf-ball-orb {
+          animation: bf-ballSpin 260ms linear infinite;
+        }
+        @keyframes bf-ballWobble {
+          0%, 100% { transform: rotate(-4deg); }
+          50% { transform: rotate(4deg); }
         }
         @keyframes bf-ballSpin {
           from { transform: rotate(0deg); }
           to   { transform: rotate(360deg); }
         }
-        @keyframes bf-ballThrow {
-          0%   { transform: translate(-50%, -50%) translate(${ballVec.fx}px, ${ballVec.fy}px) scale(2.2); opacity: 0.9; }
-          55%  { transform: translate(-50%, -50%) translate(${ballVec.mx}px, ${ballVec.my}px) scale(1.25); opacity: 1; }
-          85%  { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
-          100% { transform: translate(-50%, -50%) translate(0, 0) scale(0.8); opacity: 0; }
+
+        /* ── Stick figure — slow-motion run-in and bicycle kick ── */
+        .bf-stick-wrap {
+          position: absolute;
+          left: ${groundX}px;
+          top: ${groundY}px;
+          width: 0; height: 0;
+        }
+        .bf-stick {
+          position: absolute;
+          left: -30px; top: -100px;
+          width: 60px; height: 100px;
+          overflow: visible;
+          filter: drop-shadow(0 0 6px rgba(192,132,252,0.55));
+        }
+        .bf-stick.bf-stick-run {
+          animation: bf-runIn ${RUN_MS}ms cubic-bezier(0.45, 0, 0.55, 1) forwards;
+        }
+        @keyframes bf-runIn {
+          0%   { transform: translateX(-75vw); }
+          100% { transform: translateX(-40px); }
+        }
+        .bf-stick.bf-stick-kick {
+          transform: translateX(-40px);
+        }
+        .bf-stick .stick-body {
+          transform-origin: 30px 95px;
+        }
+        .bf-stick.bf-stick-kick .stick-body {
+          animation: bf-bodyLean ${KICK_MS}ms cubic-bezier(0.34, 1.2, 0.4, 1) forwards;
+        }
+        @keyframes bf-bodyLean {
+          0%   { transform: rotate(0deg); }
+          40%  { transform: rotate(-8deg); }
+          65%  { transform: rotate(-18deg); }
+          100% { transform: rotate(-6deg); }
+        }
+        .stick-leg-front-thigh,
+        .stick-leg-back,
+        .stick-arm-front,
+        .stick-arm-back {
+          transform-origin: 30px 60px;
+        }
+        .stick-arm-front, .stick-arm-back { transform-origin: 30px 30px; }
+        .bf-stick.bf-stick-run .stick-leg-front-thigh {
+          animation: bf-runLegFront 320ms ease-in-out infinite;
+        }
+        .bf-stick.bf-stick-run .stick-leg-back {
+          animation: bf-runLegBack 320ms ease-in-out infinite;
+        }
+        .bf-stick.bf-stick-run .stick-arm-front {
+          animation: bf-runArmFront 320ms ease-in-out infinite;
+        }
+        .bf-stick.bf-stick-run .stick-arm-back {
+          animation: bf-runArmBack 320ms ease-in-out infinite;
+        }
+        @keyframes bf-runLegFront {
+          0%, 100% { transform: rotate(24deg); }
+          50% { transform: rotate(-24deg); }
+        }
+        @keyframes bf-runLegBack {
+          0%, 100% { transform: rotate(-24deg); }
+          50% { transform: rotate(24deg); }
+        }
+        @keyframes bf-runArmFront {
+          0%, 100% { transform: rotate(-20deg); }
+          50% { transform: rotate(20deg); }
+        }
+        @keyframes bf-runArmBack {
+          0%, 100% { transform: rotate(20deg); }
+          50% { transform: rotate(-20deg); }
+        }
+        .bf-stick.bf-stick-kick .stick-leg-back {
+          animation: bf-kickPlant ${KICK_MS}ms cubic-bezier(0.34, 1.2, 0.4, 1) forwards;
+        }
+        @keyframes bf-kickPlant {
+          0%   { transform: rotate(0deg); }
+          100% { transform: rotate(-14deg); }
+        }
+        .bf-stick.bf-stick-kick .stick-leg-front-thigh {
+          animation: bf-kickThigh ${KICK_MS}ms cubic-bezier(0.3, 0, 0.3, 1) forwards;
+        }
+        .bf-stick.bf-stick-kick .stick-leg-front-shin {
+          transform-origin: 44px 76px;
+          animation: bf-kickShin ${KICK_MS}ms cubic-bezier(0.3, 0, 0.3, 1) forwards;
+        }
+        @keyframes bf-kickThigh {
+          0%   { transform: rotate(20deg); }
+          35%  { transform: rotate(-40deg); }
+          60%  { transform: rotate(-125deg); }
+          80%  { transform: rotate(-165deg); }
+          100% { transform: rotate(-150deg); }
+        }
+        @keyframes bf-kickShin {
+          0%   { transform: rotate(15deg); }
+          35%  { transform: rotate(0deg); }
+          60%  { transform: rotate(35deg); }
+          80%  { transform: rotate(55deg); }
+          100% { transform: rotate(40deg); }
+        }
+        .bf-stick.bf-stick-kick .stick-arm-front,
+        .bf-stick.bf-stick-kick .stick-arm-back {
+          animation: bf-kickArms ${KICK_MS}ms cubic-bezier(0.3, 0, 0.3, 1) forwards;
+        }
+        @keyframes bf-kickArms {
+          0%   { transform: rotate(0deg); }
+          60%  { transform: rotate(-60deg); }
+          100% { transform: rotate(-30deg); }
         }
 
         /* ── Impact damage: crater + debris, lands a beat before the crack ── */
@@ -507,8 +674,40 @@ export default function BifrostTransition() {
 
         {(phase === 'impact' || phase === 'crack') && <div className="bf-crack-flash" />}
 
-        {phase === 'ball' && (
-          <div className="bf-ball">
+        {showStick && (
+          <div className="bf-stick-wrap">
+            <svg
+              className={`bf-stick ${phase === 'run' ? 'bf-stick-run' : 'bf-stick-kick'}`}
+              viewBox="0 0 60 100"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <g className="stick-body" stroke="#d8c4ff" strokeWidth="3.2" strokeLinecap="round" fill="none">
+                {/* head */}
+                <circle cx="30" cy="16" r="8" fill="#0d0518" stroke="#e9d5ff" strokeWidth="3" />
+                {/* torso */}
+                <line x1="30" y1="24" x2="30" y2="60" />
+                {/* back arm */}
+                <line className="stick-arm-back" x1="30" y1="30" x2="16" y2="48" />
+                {/* front arm */}
+                <line className="stick-arm-front" x1="30" y1="30" x2="44" y2="46" />
+                {/* back leg (plant leg) */}
+                <line className="stick-leg-back" x1="30" y1="60" x2="16" y2="95" />
+                {/* front leg (kicking leg) — two segments so it can bend at the knee */}
+                <line className="stick-leg-front-thigh" x1="30" y1="60" x2="44" y2="76" />
+                <line className="stick-leg-front-shin" x1="44" y1="76" x2="56" y2="92" />
+              </g>
+            </svg>
+          </div>
+        )}
+
+        {showBall && (
+          <div
+            className={`bf-ball ${
+              phase === 'drop' ? 'bf-ball-drop'
+              : phase === 'fly' ? 'bf-ball-fly'
+              : 'bf-ball-rest'
+            }`}
+          >
             {/* VOID "O" portal mark, same art as the login logo, used as the void-ball */}
             <svg className="bf-ball-orb" width="64" height="64" viewBox="0 0 72 72" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
