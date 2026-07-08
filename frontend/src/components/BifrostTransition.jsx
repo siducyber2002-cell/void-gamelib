@@ -52,11 +52,11 @@ export const bifrostBus = {
 // his strike plays in hero slow-motion — like the replay angle right before
 // a striker buries a goal — then speed snaps back to normal the moment the
 // struck ball rockets off toward the login button.
-const DROP_MS = 420          // FAST, IMMEDIATE — the O drops the instant login succeeds, lands, and bounces
+const DROP_MS = 560          // FAST, IMMEDIATE — the O drops the instant login succeeds, lands, and bounces
 const ENTRANCE_MS = 1150     // HERO SLOW-MOTION — the stickman sprinting in to meet the ball
 const KICK_MS = 780          // HERO SLOW-MOTION — plant, wind-up and the forward kick strike
 const BALL_MS = 780          // FAST — the struck ball rockets off, comet-style, to the impact point
-const IMPACT_MS = 260        // NORMAL SPEED — crater + debris punching outward, before the cracks start spreading
+const IMPACT_MS = 260        // duration of the crater/debris pop-in — plays alongside the crack, not before it
 const CRACK_MS = 2100        // the crack slowly spidering from short → medium → full-page
 const HOLD_MS = 250          // a beat of stillness once the crack is complete, before it lets go
 const NAV_GUARD_MS = 40      // buffer after navigate before revealing pieces, in case of a slow paint
@@ -394,38 +394,32 @@ export default function BifrostTransition() {
           setPhase('ball')
 
           timers.current.push(setTimeout(() => {
-            // Ball has landed — impact! Speed snaps back to normal here.
-            // Crater punches in and debris flecks burst outward instantly.
-            // The cracks haven't started yet; this is pure "damage" on the
-            // surface first.
+            // Comet lands — impact! Speed snaps back to normal here. The
+            // crater/debris pop-in and the crack spidering outward both
+            // fire in the same tick, right on the hit — no pause, no
+            // stopping between the strike and the page starting to break.
             setCrater(buildCrater(width, height, impact.xPct, impact.yPct))
-            setPhase('impact')
+            setShatterState(buildMirrorShatter(width, height, impact.xPct, impact.yPct))
+            setPhase('crack')
 
             timers.current.push(setTimeout(() => {
-              // Impact has registered — now the crack spiders out from the
-              // crater across the whole page.
-              setShatterState(buildMirrorShatter(width, height, impact.xPct, impact.yPct))
-              setPhase('crack')
-
-              timers.current.push(setTimeout(() => {
-                // Crack is fully drawn. Swap to the (still seamless, still whole-
-                // looking) 7-piece layout one paint ahead of navigating, so the
-                // route change is hidden behind intact-looking pieces.
-                setPhase('pieces')
+              // Crack is fully drawn. Swap to the (still seamless, still whole-
+              // looking) 7-piece layout one paint ahead of navigating, so the
+              // route change is hidden behind intact-looking pieces.
+              setPhase('pieces')
+              raf.current.push(requestAnimationFrame(() => {
                 raf.current.push(requestAnimationFrame(() => {
-                  raf.current.push(requestAnimationFrame(() => {
-                    navigate('/')
+                  navigate('/')
+                  timers.current.push(setTimeout(() => {
+                    setPhase('falling')
                     timers.current.push(setTimeout(() => {
-                      setPhase('falling')
-                      timers.current.push(setTimeout(() => {
-                        setPhase('idle')
-                        held.current = null
-                      }, NUM_PIECES * PIECE_STAGGER_MS + PIECE_DUR_MAX + 150))
-                    }, NAV_GUARD_MS))
-                  }))
+                      setPhase('idle')
+                      held.current = null
+                    }, NUM_PIECES * PIECE_STAGGER_MS + PIECE_DUR_MAX + 150))
+                  }, NAV_GUARD_MS))
                 }))
-              }, CRACK_MS + HOLD_MS))
-            }, IMPACT_MS))
+              }))
+            }, CRACK_MS + HOLD_MS))
           }, BALL_MS))
         }, KICK_MS))
       }, ENTRANCE_MS))
@@ -451,10 +445,10 @@ export default function BifrostTransition() {
   if (phase === 'idle' || !payload) return null
 
   const { image, width, height, left, top, impactXPct = 50, impactYPct = 90 } = payload
-  const showWhole = phase === 'held' || phase === 'drop' || phase === 'entrance' || phase === 'kick' || phase === 'ball' || phase === 'impact' || phase === 'crack'
+  const showWhole = phase === 'held' || phase === 'drop' || phase === 'entrance' || phase === 'kick' || phase === 'ball' || phase === 'crack'
   const showPieces = phase === 'pieces' || phase === 'falling'
   const showCracks = phase === 'crack' || phase === 'pieces' || phase === 'falling'
-  const showCrater = phase === 'impact' || phase === 'crack' || phase === 'pieces'
+  const showCrater = phase === 'crack' || phase === 'pieces'
   const isFalling = phase === 'falling'
   const showStickman = phase === 'entrance' || phase === 'kick' || phase === 'ball'
   const stickmanClass = phase === 'entrance' ? 'bf-stickman-run' : phase === 'kick' ? 'bf-stickman-kick' : 'bf-stickman-exit'
@@ -857,7 +851,7 @@ export default function BifrostTransition() {
         }
       `}</style>
 
-      <div className={`bf-stage ${phase === 'impact' || phase === 'crack' ? 'bf-shake' : ''}`} style={{ left, top, width, height }}>
+      <div className={`bf-stage ${phase === 'crack' ? 'bf-shake' : ''}`} style={{ left, top, width, height }}>
         {showWhole && (
           <div className="bf-whole" style={{ backgroundImage: image ? `url(${image})` : undefined }} />
         )}
@@ -924,7 +918,7 @@ export default function BifrostTransition() {
           />
         ))}
 
-        {(phase === 'impact' || phase === 'crack') && <div className="bf-crack-flash" />}
+        {phase === 'crack' && <div className="bf-crack-flash" />}
 
         {/* O falling from the logo down to the kick point — normal speed */}
         {showDropBall && (
