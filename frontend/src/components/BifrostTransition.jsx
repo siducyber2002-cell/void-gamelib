@@ -16,11 +16,12 @@ import { useNavigate } from 'react-router-dom'
 //   2. bifrostBus.shatter({ impact: { xPct, yPct } })
 //      Called only once login actually succeeds. The sequence:
 //        a) the VOID "O" portal mark detaches from the logo (top-left) and
-//           drops, spinning, while a stickman sprints in from off-screen to
-//           meet it at ground level, bottom-left
-//        b) the O lands at his feet; he plants, leans back, and winds up
-//        c) bicycle kick — he whips a leg up and overhead, striking the O
-//           on the way through
+//           drops, spinning, straight down to ground level, bottom-left —
+//           landing with a little squash-and-stretch bounce, like a dropped
+//           ball settling
+//        b) a stickman sprints in from off-screen to meet it where it landed
+//        c) he plants his standing leg, cocks his kicking leg back, and
+//           swings it forward through the ball — a normal, grounded kick
 //        d) the O rockets off on an arc into the impact point (the login
 //           button)
 //        e) on the hit: a crater punches in and debris flecks burst
@@ -45,14 +46,16 @@ export const bifrostBus = {
   subscribe: (cb) => { listeners.add(cb); return () => listeners.delete(cb) },
 }
 
-// ── Timing — tuned to land the whole sequence at ~9-9.5s from click ──
-// The O's fall is normal speed. The moment the stickman enters through his
-// strike — and the ball's flight off his foot — plays in slow motion so the
-// hit actually reads. Speed snaps back to normal the instant it lands.
-const DROP_MS = 560          // NORMAL SPEED — the O falling from the logo to the kick point
-const ENTRANCE_MS = 900      // SLOW MOTION — the stickman sprinting in to meet the ball
-const KICK_MS = 650          // SLOW MOTION — plant, wind-up and the bicycle-kick strike
-const BALL_MS = 900          // SLOW MOTION — the struck ball's flight to the impact point
+// ── Timing — tuned to land the whole sequence at ~9.5-10s from click ──
+// The O's fall is FAST and starts the instant login succeeds — no wind-up,
+// no delay, it just drops. Everything from the stickman's entrance through
+// his strike plays in hero slow-motion — like the replay angle right before
+// a striker buries a goal — then speed snaps back to normal the moment the
+// struck ball rockets off toward the login button.
+const DROP_MS = 420          // FAST, IMMEDIATE — the O drops the instant login succeeds, lands, and bounces
+const ENTRANCE_MS = 1150     // HERO SLOW-MOTION — the stickman sprinting in to meet the ball
+const KICK_MS = 780          // HERO SLOW-MOTION — plant, wind-up and the forward kick strike
+const BALL_MS = 780          // FAST — the struck ball rockets off, comet-style, to the impact point
 const IMPACT_MS = 260        // NORMAL SPEED — crater + debris punching outward, before the cracks start spreading
 const CRACK_MS = 2100        // the crack slowly spidering from short → medium → full-page
 const HOLD_MS = 250          // a beat of stillness once the crack is complete, before it lets go
@@ -460,6 +463,16 @@ export default function BifrostTransition() {
   const showHeldBall = phase === 'kick'
   const showSlowmoPulse = phase === 'entrance'
 
+  // Comet tail for the struck ball: rotate to face backward along each leg
+  // of the arc (kick point → apex → impact point), and size roughly to the
+  // flight distance so short and long shots both read well.
+  const legA = { x: ballVec.mx - ballVec.fx, y: ballVec.my - ballVec.fy }
+  const legB = { x: 0 - ballVec.mx, y: 0 - ballVec.my }
+  const tailAngle1 = Math.atan2(legA.y, legA.x) * 180 / Math.PI + 180
+  const tailAngle2 = Math.atan2(legB.y, legB.x) * 180 / Math.PI + 180
+  const flightDist = (Math.hypot(legA.x, legA.y) + Math.hypot(legB.x, legB.y)) / 2
+  const cometLen = Math.max(70, Math.min(190, flightDist * 0.55))
+
   return (
     <div className="bf-overlay">
       <style>{`
@@ -504,21 +517,21 @@ export default function BifrostTransition() {
           opacity: 0;
         }
 
-        /* ── Void ball — the VOID "O" portal mark, thrown from the user's side ── */
+        /* ── Void ball — rockets off comet-style the instant of contact ── */
         .bf-ball {
           position: absolute;
           left: ${impactXPct}%; top: ${impactYPct}%;
           width: 0; height: 0;
-          filter: drop-shadow(0 0 16px rgba(168,85,247,0.7)) drop-shadow(0 0 34px rgba(124,58,237,0.4));
+          filter: drop-shadow(0 0 20px rgba(168,85,247,0.85)) drop-shadow(0 0 40px rgba(124,58,237,0.5));
           transform: translate(-50%, -50%) translate(${ballVec.fx}px, ${ballVec.fy}px) scale(2.2);
           opacity: 0.9;
-          animation: bf-ballThrow ${BALL_MS}ms cubic-bezier(0.33, 0, 0.4, 1) forwards;
+          animation: bf-ballThrow ${BALL_MS}ms cubic-bezier(0.16, 0.6, 0.2, 1) forwards;
         }
         .bf-ball-orb {
           position: absolute;
           left: -32px; top: -32px;
           overflow: visible;
-          animation: bf-ballSpin 650ms linear infinite;
+          animation: bf-ballSpin 260ms linear infinite;
         }
         @keyframes bf-ballSpin {
           from { transform: rotate(0deg); }
@@ -526,9 +539,50 @@ export default function BifrostTransition() {
         }
         @keyframes bf-ballThrow {
           0%   { transform: translate(-50%, -50%) translate(${ballVec.fx}px, ${ballVec.fy}px) scale(2.2); opacity: 0.9; }
-          55%  { transform: translate(-50%, -50%) translate(${ballVec.mx}px, ${ballVec.my}px) scale(1.25); opacity: 1; }
-          85%  { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
+          42%  { transform: translate(-50%, -50%) translate(${ballVec.mx}px, ${ballVec.my}px) scale(1.3); opacity: 1; }
+          82%  { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
           100% { transform: translate(-50%, -50%) translate(0, 0) scale(0.8); opacity: 0; }
+        }
+
+        /* Ignition flash — a bright, fast burst right at the kick point the
+           instant the ball takes off, like a comet igniting at launch. */
+        .bf-launch-flash {
+          position: absolute;
+          left: ${KICK_X_PCT}%; top: ${KICK_Y_PCT}%;
+          width: 10vmax; height: 10vmax;
+          border-radius: 50%;
+          transform: translate(-50%, -50%) scale(0.15);
+          background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(216,196,255,0.6) 40%, transparent 72%);
+          opacity: 0;
+          animation: bf-launchFlash 320ms ease-out forwards;
+        }
+        @keyframes bf-launchFlash {
+          0%   { opacity: 0;   transform: translate(-50%, -50%) scale(0.15); }
+          25%  { opacity: 1;   transform: translate(-50%, -50%) scale(1);    }
+          100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.8);  }
+        }
+
+        /* Comet tail — a bright gradient streak trailing behind the O,
+           rotated to face backward along the current leg of the arc so it
+           always points away from the direction of travel. Swings to the
+           second angle partway through, right as the ball crests the arc. */
+        .bf-comet-tail {
+          position: absolute;
+          left: 0; top: -6px;
+          height: 12px;
+          transform-origin: 0% 50%;
+          background: linear-gradient(90deg, rgba(255,255,255,0.95) 0%, rgba(224,196,255,0.85) 14%, rgba(168,85,247,0.5) 45%, rgba(124,58,237,0) 100%);
+          border-radius: 999px;
+          filter: blur(2px) drop-shadow(0 0 12px rgba(168,85,247,0.85));
+          animation: bf-cometTail ${BALL_MS}ms cubic-bezier(0.16, 0.6, 0.2, 1) forwards;
+        }
+        @keyframes bf-cometTail {
+          0%   { transform: rotate(${tailAngle1}deg) scaleX(0);   opacity: 0;    }
+          12%  { transform: rotate(${tailAngle1}deg) scaleX(1);   opacity: 1;    }
+          42%  { transform: rotate(${tailAngle1}deg) scaleX(1.1); opacity: 1;    }
+          48%  { transform: rotate(${tailAngle2}deg) scaleX(1.1); opacity: 1;    }
+          82%  { transform: rotate(${tailAngle2}deg) scaleX(0.9); opacity: 0.9;  }
+          100% { transform: rotate(${tailAngle2}deg) scaleX(0.25);opacity: 0;    }
         }
 
         /* ── O drop — detaches from the logo (top-left) and falls, spinning,
@@ -539,11 +593,18 @@ export default function BifrostTransition() {
           width: 0; height: 0;
           filter: drop-shadow(0 0 16px rgba(168,85,247,0.7)) drop-shadow(0 0 34px rgba(124,58,237,0.4));
           transform: translate(-50%, -50%) translate(${dropVec.fx}px, ${dropVec.fy}px) scale(1);
-          animation: bf-ballDrop ${DROP_MS}ms cubic-bezier(0.55, 0.06, 0.68, 0.19) forwards;
+          animation: bf-ballDrop ${DROP_MS}ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
+        /* Starts moving IMMEDIATELY — no wind-up — covers most of the fall
+           fast, then lands with a little squash-and-stretch bounce instead
+           of just stopping dead: squashes flat on impact, rebounds up a
+           bit, dips again on a smaller second bounce, then settles. */
         @keyframes bf-ballDrop {
-          0%   { transform: translate(-50%, -50%) translate(${dropVec.fx}px, ${dropVec.fy}px) scale(1); opacity: 1; }
-          100% { transform: translate(-50%, -50%) translate(0, 0) scale(1); opacity: 1; }
+          0%   { transform: translate(-50%, -50%) translate(${dropVec.fx}px, ${dropVec.fy}px) scale(1, 1);      opacity: 1; }
+          55%  { transform: translate(-50%, -50%) translate(0, 0)     scale(1.18, 0.8);  opacity: 1; }  /* impact squash */
+          72%  { transform: translate(-50%, -50%) translate(0, -16px) scale(0.92, 1.1);  opacity: 1; }  /* rebound up */
+          86%  { transform: translate(-50%, -50%) translate(0, 2px)   scale(1.08, 0.94); opacity: 1; }  /* small second bounce */
+          100% { transform: translate(-50%, -50%) translate(0, 0)     scale(1, 1);       opacity: 1; }  /* settled */
         }
 
         /* ── O idling at the kick point, waiting — a slow breathing pulse
@@ -618,8 +679,9 @@ export default function BifrostTransition() {
         .bm-arm-back         { transform-origin: 35px 30px; }
         .bm-arm-front        { transform-origin: 35px 30px; }
 
-        /* Running in, slow motion — a slow, powerful stride, torso translating
-           in from off-screen left and settling right where the O is waiting. */
+        /* Running in, hero slow motion — a slow, powerful stride, torso
+           translating in from off-screen left and settling right where the
+           O is waiting. */
         .bf-stickman-run .bf-stickman-svg {
           animation: bm-runIn ${ENTRANCE_MS}ms cubic-bezier(0.3, 0.1, 0.25, 1) forwards;
         }
@@ -629,10 +691,10 @@ export default function BifrostTransition() {
           100% { transform: translate(0px, 0px);    }
         }
         .bf-stickman-run .bm-leg-plant {
-          animation: bm-runLegsA 380ms ease-in-out infinite;
+          animation: bm-runLegsA 460ms ease-in-out infinite;
         }
         .bf-stickman-run .bm-leg-kick-pivot {
-          animation: bm-runLegsB 380ms ease-in-out infinite;
+          animation: bm-runLegsB 460ms ease-in-out infinite;
         }
         @keyframes bm-runLegsA {
           0%, 100% { transform: rotate(26deg); }
@@ -643,48 +705,73 @@ export default function BifrostTransition() {
           50%      { transform: rotate(26deg); }
         }
         .bf-stickman-run .bm-torso {
-          animation: bm-runBob 380ms ease-in-out infinite;
+          animation: bm-runBob 460ms ease-in-out infinite;
         }
         @keyframes bm-runBob {
           0%, 100% { transform: translateY(0); }
           50%      { transform: translateY(-4px); }
         }
 
-        /* ── The bicycle kick — a proper football-style strike, in slow motion:
-           1) plant leg coils and the whole body dips into a crouch
-           2) he leaps, leaning back, going airborne
-           3) the kicking leg whips up and over in a wide arc — contact lands
-              late in the swing, right at the top of the arc, so the hit is
-              clearly visible before the follow-through
-           4) he comes back down out of frame as the ball is already gone ── */
-        .bf-stickman-kick .bm-torso {
-          animation: bm-leanBack ${KICK_MS}ms cubic-bezier(0.45, 0, 0.3, 1) forwards;
+        /* Hero afterimage — two faded, blurred ghost copies trailing behind
+           the sprinting figure, staggered so they lag his real position.
+           Classic "speedster" cue that sells the slow-mo as speed rather
+           than sluggishness. */
+        .bf-hero-ghost {
+          position: absolute;
+          left: -35px; top: -92px;
+          overflow: visible;
+          pointer-events: none;
+          animation: bm-runIn ${ENTRANCE_MS}ms cubic-bezier(0.3, 0.1, 0.25, 1) forwards;
+          animation-fill-mode: both;
         }
-        @keyframes bm-leanBack {
+        .bf-hero-ghost-1 {
+          opacity: 0.22;
+          filter: blur(3px) drop-shadow(0 0 6px rgba(168,85,247,0.5));
+          animation-delay: 90ms;
+        }
+        .bf-hero-ghost-2 {
+          opacity: 0.12;
+          filter: blur(5px) drop-shadow(0 0 6px rgba(168,85,247,0.4));
+          animation-delay: 180ms;
+        }
+
+        /* ── The kick — a normal, grounded football-style strike, in slow
+           motion (matches the storyboard: right leg cocks back, then
+           swings straight through the ball; he stays on his feet the
+           whole time, no jump, no overhead flip):
+           1) plant leg settles and takes his weight, torso leans back
+              slightly as the kicking leg cocks back
+           2) the kicking leg whips forward fast — contact lands late in
+              the swing so the hit is clearly visible
+           3) follow-through, torso tips forward over the plant leg ── */
+        .bf-stickman-kick .bm-torso {
+          animation: bm-kickLean ${KICK_MS}ms cubic-bezier(0.45, 0, 0.3, 1) forwards;
+        }
+        @keyframes bm-kickLean {
           0%   { transform: rotate(0deg)   translateY(0);   }
-          22%  { transform: rotate(-6deg)  translateY(3px); }  /* crouch, coiling */
-          55%  { transform: rotate(18deg)  translateY(-7px); } /* airborne, leaning back */
-          88%  { transform: rotate(30deg)  translateY(-9px); } /* apex — strike lands here */
-          100% { transform: rotate(26deg)  translateY(-4px); } /* settling back down */
+          30%  { transform: rotate(-9deg)  translateY(1px); }  /* winding up, leaning back */
+          62%  { transform: rotate(2deg)   translateY(0);   }  /* driving forward into the ball */
+          88%  { transform: rotate(9deg)   translateY(-1px);}  /* CONTACT — leaning into the strike */
+          100% { transform: rotate(6deg)   translateY(0);   }  /* follow-through settles */
         }
         .bf-stickman-kick .bm-leg-kick-pivot {
-          animation: bm-bicycleKick ${KICK_MS}ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+          animation: bm-forwardKick ${KICK_MS}ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
-        @keyframes bm-bicycleKick {
-          0%   { transform: rotate(18deg);   }  /* cocked back, low */
-          22%  { transform: rotate(46deg);   }  /* deeper cock-back through the crouch */
-          60%  { transform: rotate(-110deg); }  /* whipping up fast */
-          88%  { transform: rotate(-188deg); }  /* CONTACT — leg near the top of the arc, overhead */
-          100% { transform: rotate(-206deg); }  /* follow-through */
+        @keyframes bm-forwardKick {
+          0%   { transform: rotate(20deg);  }  /* neutral, trailing slightly */
+          30%  { transform: rotate(58deg);  }  /* cocked back — right leg back, winding up */
+          62%  { transform: rotate(-38deg); }  /* swinging forward fast */
+          88%  { transform: rotate(-78deg); }  /* CONTACT — leg extended forward through the ball */
+          100% { transform: rotate(-64deg); }  /* follow-through */
         }
         .bf-stickman-kick .bm-leg-plant {
           animation: bm-plantBrace ${KICK_MS}ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
         }
         @keyframes bm-plantBrace {
           0%   { transform: rotate(0deg);   }
-          22%  { transform: rotate(-16deg); } /* knee bends deep, coiling for the jump */
-          55%  { transform: rotate(6deg);   } /* extending, pushing off the ground */
-          100% { transform: rotate(12deg);  }
+          30%  { transform: rotate(-8deg);  } /* knee softens, taking his weight */
+          62%  { transform: rotate(3deg);   } /* pushing through the strike */
+          100% { transform: rotate(5deg);   } /* braced, grounded */
         }
         .bf-stickman-kick .bm-arm-back,
         .bf-stickman-kick .bm-arm-front {
@@ -692,9 +779,9 @@ export default function BifrostTransition() {
         }
         @keyframes bm-armFlail {
           0%   { transform: rotate(0deg);   }
-          40%  { transform: rotate(-10deg); }
-          88%  { transform: rotate(-34deg); }
-          100% { transform: rotate(-30deg); }
+          30%  { transform: rotate(-8deg);  }
+          62%  { transform: rotate(14deg);  }
+          100% { transform: rotate(10deg);  }
         }
 
         /* He's done his job — settle back down and fade as the O takes off. */
@@ -863,16 +950,47 @@ export default function BifrostTransition() {
           </div>
         )}
 
-        {/* Stickman — sprints in to meet the falling O, plants, and lands the bicycle kick */}
+        {/* Stickman — sprints in, hero slow-motion, to meet the falling O,
+           plants, and lands the forward kick */}
         {showStickman && (
           <div className={`bf-stickman ${stickmanClass}`}>
+            {stickmanClass === 'bf-stickman-run' && (
+              <>
+                <svg className="bf-hero-ghost bf-hero-ghost-2" width="70" height="100" viewBox="0 0 70 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="35" cy="16" r="8" stroke="#e9d5ff" strokeWidth="3" fill="none" />
+                  <line x1="35" y1="24" x2="35" y2="58" stroke="#e9d5ff" strokeWidth="3" strokeLinecap="round" />
+                  <line x1="35" y1="58" x2="26" y2="92" stroke="#e9d5ff" strokeWidth="3.5" strokeLinecap="round" />
+                  <line x1="35" y1="58" x2="46" y2="90" stroke="#e9d5ff" strokeWidth="3.5" strokeLinecap="round" />
+                </svg>
+                <svg className="bf-hero-ghost bf-hero-ghost-1" width="70" height="100" viewBox="0 0 70 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <circle cx="35" cy="16" r="8" stroke="#e9d5ff" strokeWidth="3" fill="none" />
+                  <line x1="35" y1="24" x2="35" y2="58" stroke="#e9d5ff" strokeWidth="3" strokeLinecap="round" />
+                  <line x1="35" y1="58" x2="26" y2="92" stroke="#e9d5ff" strokeWidth="3.5" strokeLinecap="round" />
+                  <line x1="35" y1="58" x2="46" y2="90" stroke="#e9d5ff" strokeWidth="3.5" strokeLinecap="round" />
+                </svg>
+              </>
+            )}
             <Stickman />
           </div>
         )}
 
-        {/* Struck O, in flight from the kick point to the impact point */}
+        {/* The instant of contact — a bright ignition flash at the kick
+           point, right as the struck O takes off like a comet launching. */}
+        {phase === 'ball' && <div className="bf-launch-flash" />}
+
+        {/* Struck O, rocketing from the kick point to the impact point,
+           comet-style — trailing a bright gradient tail that swings to
+           track the flight direction through the arc. */}
         {phase === 'ball' && (
           <div className="bf-ball">
+            <div
+              className="bf-comet-tail"
+              style={{
+                width: `${cometLen}px`,
+                '--tailAngle1': `${tailAngle1}deg`,
+                '--tailAngle2': `${tailAngle2}deg`,
+              }}
+            />
             <VoidOrb />
           </div>
         )}
