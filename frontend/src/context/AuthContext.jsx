@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const AuthContext = createContext(null)
 
@@ -27,6 +28,38 @@ export function AuthProvider({ children }) {
   }
 
   const dismissStreakPopup = () => setShowStreakPopup(false)
+
+  // Picks up after /api/auth/google/callback redirects back here. That's a
+  // full-page navigation (Google → backend → here), not a fetch, so the
+  // backend has no way to hand the token back except on the URL. This runs
+  // once on mount, wherever the callback's `next` pointed — grabs the token
+  // if there is one, stores it exactly like a normal login would, then
+  // strips it from the URL so it doesn't linger in browser history.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const oauthToken = params.get('token')
+    const authError = params.get('auth_error')
+
+    if (oauthToken) {
+      localStorage.setItem('gl_token', oauthToken)
+      axios.defaults.headers.common['Authorization'] = `Bearer ${oauthToken}`
+      setToken(oauthToken)
+      toast.success('Signed in with Google')
+    } else if (authError) {
+      toast.error(
+        authError === 'google_email_unverified'
+          ? "That Google account's email isn't verified"
+          : 'Google sign-in failed — please try again'
+      )
+    }
+
+    if (oauthToken || authError) {
+      params.delete('token')
+      params.delete('auth_error')
+      const rest = params.toString()
+      window.history.replaceState({}, '', window.location.pathname + (rest ? `?${rest}` : ''))
+    }
+  }, [])
 
   useEffect(() => {
     if (token) {

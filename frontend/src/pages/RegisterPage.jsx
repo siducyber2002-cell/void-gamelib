@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
-import { Eye, EyeOff, ChevronRight, BookOpen, Sun, Moon } from 'lucide-react'
+import { Eye, EyeOff, ChevronRight, BookOpen } from 'lucide-react'
 
 export default function RegisterPage() {
   const { register } = useAuth()
@@ -11,8 +11,10 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = useState(false)
   const [showConfirmPw, setShowConfirmPw] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [darkMode, setDarkMode] = useState(true)
+  const [googleLoading, setGoogleLoading] = useState(false)
   const [glitchText, setGlitchText] = useState('Join The Void')
+  // Theme is locked to the dark VOID look — no light-mode toggle.
+  const darkMode = true
   const canvasRef = useRef(null)
   const animFrameRef = useRef(null)
 
@@ -268,7 +270,15 @@ export default function RegisterPage() {
   const strengthColors = ['', '#f43f5e', '#f59e0b', '#a855f7', '#7c3aed']
   const strengthColor = strengthColors[strength]
 
-  const lm = !darkMode
+  const lm = !darkMode // always false — dark theme only
+
+  // Redirects into Google's OAuth consent screen; mirrors LoginPage's flow.
+  const handleGoogleLogin = () => {
+    setGoogleLoading(true)
+    const apiBase = import.meta.env.VITE_API_URL || ''
+    const next = encodeURIComponent(window.location.origin + '/')
+    window.location.href = `${apiBase}/api/auth/google?next=${next}`
+  }
 
   return (
     <>
@@ -292,38 +302,6 @@ export default function RegisterPage() {
           z-index: 0;
           pointer-events: none;
           will-change: transform;
-        }
-
-        /* ── MODE TOGGLE ── */
-        .mode-toggle {
-          position: absolute;
-          top: 1.5rem;
-          right: 1.6rem;
-          z-index: 10;
-          width: 54px;
-          height: 28px;
-          background: ${lm ? 'rgba(124,58,237,0.15)' : 'rgba(20,0,40,0.6)'};
-          border: 1px solid ${lm ? 'rgba(124,58,237,0.4)' : 'rgba(168,85,247,0.35)'};
-          border-radius: 999px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          padding: 3px;
-          transition: all 0.35s;
-          backdrop-filter: blur(8px);
-        }
-        .mode-toggle-knob {
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, #7c3aed, #a855f7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transform: translateX(${lm ? '26px' : '0px'});
-          transition: transform 0.35s cubic-bezier(0.34,1.56,0.64,1);
-          box-shadow: 0 0 8px rgba(168,85,247,0.7);
-          color: #fff;
         }
 
         /* ── LEFT PANEL ── */
@@ -540,9 +518,15 @@ export default function RegisterPage() {
             ? '0 8px 60px rgba(124,58,237,0.12), 0 2px 12px rgba(0,0,0,0.06)'
             : '0 0 0 1px rgba(147,51,234,0.1), 0 32px 80px rgba(0,0,0,0.75), 0 0 60px rgba(100,20,180,0.12)'};
           transition: background 0.4s, border-color 0.4s, box-shadow 0.4s;
+          animation: cardRise 0.6s cubic-bezier(0.16,1,0.3,1) both;
         }
-
-        .card-title {
+        @keyframes cardRise {
+          from { opacity: 0; transform: translateY(18px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .register-card { animation: none; }
+        }
           font-family: 'Orbitron', sans-serif;
           font-size: 1.4rem;
           font-weight: 700;
@@ -717,6 +701,67 @@ export default function RegisterPage() {
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        .or-row { display: flex; align-items: center; gap: 0.75rem; margin: 1.2rem 0; }
+        .or-line { flex: 1; height: 1px; background: rgba(147,51,234,0.2); }
+        .or-text {
+          font-size: 0.72rem;
+          color: rgba(180,160,220,0.4);
+          font-family: 'Share Tech Mono', monospace;
+          letter-spacing: 0.1em;
+        }
+
+        .oauth-row { display: flex; }
+        .google-btn {
+          width: 100%;
+          padding: 0.75rem 1rem;
+          background: rgba(255,255,255,0.97);
+          border: 1px solid rgba(255,255,255,0.9);
+          border-radius: 10px;
+          color: #1f1f1f;
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 0.92rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.65rem;
+          letter-spacing: 0.02em;
+          position: relative;
+          overflow: hidden;
+          transition: transform 0.2s ease, box-shadow 0.25s ease;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+        }
+        .google-btn::before {
+          content: '';
+          position: absolute;
+          inset: -1px;
+          border-radius: 10px;
+          padding: 1px;
+          background: linear-gradient(135deg, rgba(168,85,247,0.6), rgba(124,58,237,0));
+          -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          opacity: 0;
+          transition: opacity 0.25s ease;
+        }
+        .google-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 22px rgba(0,0,0,0.35), 0 0 20px rgba(168,85,247,0.35);
+        }
+        .google-btn:hover::before { opacity: 1; }
+        .google-btn:active { transform: translateY(0); }
+        .google-btn:disabled { cursor: default; opacity: 0.75; transform: none; }
+        .oauth-icon { width: 18px; height: 18px; flex-shrink: 0; }
+        .google-spinner {
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          border: 2px solid rgba(30,30,30,0.2);
+          border-top-color: #1f1f1f;
+          animation: spin 0.7s linear infinite;
+        }
+
         .signin-row {
           text-align: center;
           margin-top: 1.2rem;
@@ -849,22 +894,12 @@ export default function RegisterPage() {
           .field-input { font-size: 0.9rem; padding: 0.55rem 0.55rem 0.55rem 0; }
           .strength-wrap { margin-top: 0.35rem; }
           .register-btn { padding: 0.75rem 1rem; margin-top: 0.2rem; }
-          .mode-toggle { top: 1rem; right: 1rem; }
         }
       `}</style>
 
-      <div className="void-root" style={{ background: lm ? '#f0ecff' : '#050507' }}>
+      <div className="void-root" style={{ background: '#050507' }}>
         {/* Canvas background */}
         <canvas ref={canvasRef} className="void-canvas" />
-
-
-
-        {/* Dark/Light toggle */}
-        <button className="mode-toggle" onClick={() => setDarkMode(!darkMode)} aria-label="Toggle theme">
-          <div className="mode-toggle-knob">
-            {darkMode ? <Moon size={11} /> : <Sun size={11} />}
-          </div>
-        </button>
 
         {/* ── Left Panel ── */}
         <div className="left-panel">
@@ -1189,6 +1224,35 @@ export default function RegisterPage() {
                 <>Create Account <ChevronRight size={15} /></>
               )}
             </button>
+
+            {/* OR */}
+            <div className="or-row">
+              <div className="or-line" />
+              <span className="or-text">OR</span>
+              <div className="or-line" />
+            </div>
+
+            {/* OAuth — Google only, direct redirect into Google's consent screen */}
+            <div className="oauth-row">
+              <button
+                className="google-btn"
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={googleLoading}
+              >
+                {googleLoading ? (
+                  <div className="google-spinner" />
+                ) : (
+                  <svg className="oauth-icon" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                  </svg>
+                )}
+                {googleLoading ? 'Connecting to Google…' : 'Continue with Google'}
+              </button>
+            </div>
 
             <div className="signin-row">
               Already in the void?
