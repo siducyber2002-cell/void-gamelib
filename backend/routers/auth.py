@@ -1,5 +1,12 @@
+import os
+import secrets
+import urllib.parse
+
+import httpx
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from pydantic import BaseModel
@@ -18,6 +25,84 @@ class DeleteAccountRequest(BaseModel):
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
+# ── Google OAuth config ──────────────────────────────────────────────────
+# Set these in your environment (.env / deployment secrets). Get the client
+# ID/secret from https://console.cloud.google.com/apis/credentials — an
+# "OAuth client ID" of type "Web application". Add GOOGLE_REDIRECT_URI to
+# that client's "Authorized redirect URIs" list *exactly* as set below.
+#
+# Read with getenv (not os.environ[...]) on purpose: a missing var here
+# must not crash the whole app on import — it should only break the Google
+# routes themselves, so every other endpoint keeps working either way.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET")
+# The backend URL Google redirects back to after consent, e.g.
+# "https://api.yoursite.com/api/auth/google/callback" (or
+# "http://localhost:8000/api/auth/google/callback" in dev).
+GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI")
+# Where to send the browser after login completes, e.g. your frontend's
+# origin. Falls back to the "next" query param the frontend sends in, but
+# is always checked against this allowlist so the redirect can't be hijacked.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+# Signs the "state" param so it can't be tampered with in transit. Reuse
+# your app's SECRET_KEY if you already have one (e.g. the same one
+# utils/auth.py uses to sign JWTs) rather than a second secret.
+OAUTH_STATE_SECRET = os.environ.get("SECRET_KEY") or os.environ.get("OAUTH_STATE_SECRET")
+
+_state_serializer = (
+    URLSafeTimedSerializer(OAUTH_STATE_SECRET, salt="google-oauth-state")
+    if OAUTH_STATE_SECRET else None
+)
+
+GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_ENDPOINT = "https://www.googleapis.com/oauth2/v3/userinfo"
+
+
+def _require_google_config():
+    """Called at the top of each Google route rather than at import time —
+    so if you forget an env var, only "Continue with Google" breaks (with a
+    clear message) instead of the entire backend refusing to start."""
+    missing = [
+        name for name, val in [
+            ("GOOGLE_CLIENT_ID", GOOGLE_CLIENT_ID),
+            ("GOOGLE_CLIENT_SECRET", GOOGLE_CLIENT_SECRET),
+            ("GOOGLE_REDIRECT_URI", GOOGLE_REDIRECT_URI),
+            ("SECRET_KEY or OAUTH_STATE_SECRET", OAUTH_STATE_SECRET),
+        ] if not val
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Google login isn't configured on the server — missing: {', '.join(missing)}",
+        )
+
+
+def _safe_next_path(next_url: str | None) -> str:
+    """Only ever redirect back into FRONTEND_URL — never wherever `next`
+    happens to point, since that value round-trips through the browser and
+    an attacker could otherwise use this endpoint as an open redirect."""
+    if not next_url:
+        return FRONTEND_URL
+    parsed = urllib.parse.urlparse(next_url)
+    frontend = urllib.parse.urlparse(FRONTEND_URL)
+    if parsed.scheme == frontend.scheme and parsed.netloc == frontend.netloc:
+        return next_url
+    return FRONTEND_URL
+
+
+def _unique_username(base: str, db: Session) -> str:
+    """Google gives us an email, not a username — derive one and disambiguate
+    against existing rows the same way a person signing up manually would
+    have to."""
+    base = "".join(ch for ch in base.lower() if ch.isalnum()) or "user"
+    candidate = base
+    suffix = 0
+    while db.query(User).filter(User.username == candidate).first():
+        suffix += 1
+        candidate = f"{base}{suffix}"
+    return candidate
+
 
 @router.post("/register", response_model=UserOut, status_code=201)
 def register(payload: UserRegister, db: Session = Depends(get_db)):
@@ -35,6 +120,104 @@ def register(payload: UserRegister, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
     return user
+
+
+@router.get("/google")
+def google_login(next: str | None = Query(default=None)):
+    """
+    The frontend sends the browser here directly (window.location.href),
+    not fetch — this has to be a real navigation so the user actually lands
+    on Google's consent screen. `next` is where we send them back to in the
+    app once login succeeds.
+    """
+    _require_google_config()
+    state = _state_serializer.dumps({"next": _safe_next_path(next), "nonce": secrets.token_urlsafe(16)})
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "access_type": "online",
+        "prompt": "select_account",
+    }
+    return RedirectResponse(f"{GOOGLE_AUTH_ENDPOINT}?{urllib.parse.urlencode(params)}")
+
+
+@router.get("/google/callback")
+def google_callback(
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """
+    Google redirects the browser back here with either `code` (success) or
+    `error` (user hit "cancel", etc). On success we exchange the code for
+    tokens server-to-server, look up the person's Google profile, log them
+    in (creating the account on first login), and send the browser on to
+    the frontend with a short-lived token in the URL for it to pick up.
+    """
+    _require_google_config()
+    try:
+        next_path = _state_serializer.loads(state, max_age=600)["next"] if state else FRONTEND_URL
+    except (BadSignature, SignatureExpired, TypeError, KeyError):
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth state")
+
+    if error or not code:
+        return RedirectResponse(f"{next_path}?auth_error=google_denied")
+
+    with httpx.Client(timeout=10) as client:
+        token_resp = client.post(
+            GOOGLE_TOKEN_ENDPOINT,
+            data={
+                "code": code,
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "redirect_uri": GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            },
+        )
+        if token_resp.status_code != 200:
+            return RedirectResponse(f"{next_path}?auth_error=google_token_exchange_failed")
+        access_token = token_resp.json().get("access_token")
+
+        userinfo_resp = client.get(
+            GOOGLE_USERINFO_ENDPOINT,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        if userinfo_resp.status_code != 200:
+            return RedirectResponse(f"{next_path}?auth_error=google_userinfo_failed")
+        profile = userinfo_resp.json()
+
+    email = profile.get("email")
+    if not email or not profile.get("email_verified"):
+        return RedirectResponse(f"{next_path}?auth_error=google_email_unverified")
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        # First time we've seen this email — provision an account. There's
+        # no password to hash (they'll only ever sign in via Google unless
+        # they later use "forgot password" to set one), so we store an
+        # unusable random hash rather than leaving the column nullable.
+        username_base = profile.get("given_name") or email.split("@")[0]
+        user = User(
+            username=_unique_username(username_base, db),
+            email=email,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    user.last_seen = datetime.now(timezone.utc)
+    db.commit()
+
+    update_user_streak(user, db)
+    jwt_token = create_access_token(data={"sub": str(user.id)})
+
+    redirect_url = f"{next_path}{'&' if '?' in next_path else '?'}token={urllib.parse.quote(jwt_token)}"
+    return RedirectResponse(redirect_url)
 
 
 @router.post("/token", response_model=TokenResponse)
