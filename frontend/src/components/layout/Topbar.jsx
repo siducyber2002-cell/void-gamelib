@@ -396,9 +396,12 @@ function NotificationBell({ dark }) {
         style={{
           position: 'relative', width: 34, height: 34, borderRadius: 10,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: open ? `${accent}18` : 'transparent',
+          background: open ? `${accent}18` : (dark ? '#0d0d20' : '#f5f3ff'),
           border: `1px solid ${open ? accent + '55' : border}`,
           cursor: 'pointer', transition: 'all 0.2s',
+          boxShadow: dark
+            ? '0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)'
+            : '0 2px 6px rgba(80,60,140,0.12), inset 0 1px 0 rgba(255,255,255,0.6)',
         }}
       >
         <Bell size={15} style={{ color: unread > 0 ? accent : textMut }} />
@@ -557,12 +560,23 @@ const TOPBAR_STYLE = (dark) => `
   .og-topbar {
     position: sticky; top: 0; z-index: 10;
     width: 100%; height: 60px;
-    background: ${dark ? '#07070e' : '#faf8ff'};
+    background: ${dark
+      ? 'linear-gradient(180deg, #0d0d1c 0%, #08080f 55%, #07070e 100%)'
+      : 'linear-gradient(180deg, #ffffff 0%, #fbf9ff 55%, #faf8ff 100%)'};
     border-bottom: 1px solid ${dark ? '#1a1a30' : '#e2dcf5'};
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 28px; overflow: hidden;
-    box-shadow: ${dark ? '0 0 40px rgba(168,85,247,0.06)' : '0 1px 12px rgba(124,58,237,0.06)'};
+    box-shadow: ${dark
+      ? '0 6px 20px -4px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.04), inset 0 -1px 0 rgba(255,255,255,0.02)'
+      : '0 4px 16px -4px rgba(80,60,140,0.15), inset 0 1px 0 rgba(255,255,255,0.7), inset 0 -1px 0 rgba(255,255,255,0.4)'};
     transition: background 0.3s, border-color 0.3s;
+  }
+  .og-topbar::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 50%;
+    background: ${dark
+      ? 'linear-gradient(180deg, rgba(255,255,255,0.045) 0%, transparent 100%)'
+      : 'linear-gradient(180deg, rgba(255,255,255,0.65) 0%, transparent 100%)'};
+    pointer-events: none;
   }
   .og-topbar::before {
     content: ''; position: absolute; inset: 0;
@@ -634,16 +648,16 @@ const TOPBAR_STYLE = (dark) => `
   @keyframes og-tb-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.55)} }
   .og-divider { width: 1px; height: 26px; flex-shrink: 0; background: linear-gradient(to bottom, transparent, ${dark ? '#a855f722' : '#7c3aed22'}, transparent); }
   .og-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .og-theme-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid ${dark ? '#2a2a4a' : '#e2dcf5'}; background: ${dark ? '#0d0d20' : '#f0eeff'}; cursor: pointer; transition: all 0.2s; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: ${dark ? '#a855f7' : '#7c3aed'}; letter-spacing: 0.06em; outline: none; }
-  .og-theme-btn:hover { border-color: ${dark ? '#a855f755' : '#7c3aed55'} !important; }
-  .og-avatar-btn { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 22px; border: 1px solid ${dark ? '#2a2a4a' : '#e2dcf5'}; background: ${dark ? '#0d0d20' : '#f5f3ff'}; cursor: pointer; transition: border-color 0.2s, background 0.2s; outline: none; }
-  .og-avatar-btn:hover { border-color: ${dark ? '#a855f755' : '#7c3aed44'} !important; }
-  .og-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); display: flex; align-items: center; justify-content: center; font-family: 'Orbitron', sans-serif; font-size: 11px; font-weight: 900; color: #fff; flex-shrink: 0; overflow: hidden; }
+  .og-theme-btn { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 20px; border: 1px solid ${dark ? '#2a2a4a' : '#e2dcf5'}; background: ${dark ? '#0d0d20' : '#f0eeff'}; cursor: pointer; transition: all 0.2s; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: ${dark ? '#a855f7' : '#7c3aed'}; letter-spacing: 0.06em; outline: none; box-shadow: ${dark ? '0 3px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)' : '0 3px 8px rgba(80,60,140,0.1), inset 0 1px 0 rgba(255,255,255,0.6)'}; }
+  .og-theme-btn:hover { border-color: ${dark ? '#a855f755' : '#7c3aed55'} !important; transform: translateY(-1px); }
+  .og-avatar-btn { display: flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; border-radius: 22px; border: 1px solid ${dark ? '#2a2a4a' : '#e2dcf5'}; background: ${dark ? '#0d0d20' : '#f5f3ff'}; cursor: pointer; transition: all 0.2s; outline: none; box-shadow: ${dark ? '0 3px 8px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)' : '0 3px 8px rgba(80,60,140,0.1), inset 0 1px 0 rgba(255,255,255,0.6)'}; }
+  .og-avatar-btn:hover { border-color: ${dark ? '#a855f755' : '#7c3aed44'} !important; transform: translateY(-1px); }
+  .og-avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #a855f7); display: flex; align-items: center; justify-content: center; font-family: 'Orbitron', sans-serif; font-size: 11px; font-weight: 900; color: #fff; flex-shrink: 0; overflow: hidden; box-shadow: 0 2px 6px rgba(124,58,237,0.5), inset 0 1px 0 rgba(255,255,255,0.3); }
   .og-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .og-username { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: ${dark ? '#a5b4fc' : '#6d28d9'}; letter-spacing: 0.04em; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .og-online-dot { width: 6px; height: 6px; border-radius: 50%; background: #34d399; box-shadow: 0 0 5px #34d399; flex-shrink: 0; }
-  .og-menu-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: 1px solid ${dark ? '#1e1e32' : '#e2dcf5'}; background: transparent; cursor: pointer; transition: background 0.15s; outline: none; color: ${dark ? '#a855f7' : '#7c3aed'}; }
-  .og-menu-btn:hover { background: ${dark ? '#a855f715' : '#7c3aed11'} !important; }
+  .og-online-dot { width: 6px; height: 6px; border-radius: 50%; background: #34d399; box-shadow: 0 0 5px #34d399; flex-shrink: 0; animation: og-tb-pulse 2.4s ease-in-out infinite; }
+  .og-menu-btn { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 10px; border: 1px solid ${dark ? '#1e1e32' : '#e2dcf5'}; background: ${dark ? '#0d0d20' : '#f5f3ff'}; cursor: pointer; transition: all 0.15s; outline: none; color: ${dark ? '#a855f7' : '#7c3aed'}; box-shadow: ${dark ? '0 2px 6px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)' : '0 2px 6px rgba(80,60,140,0.12), inset 0 1px 0 rgba(255,255,255,0.6)'}; }
+  .og-menu-btn:hover { background: ${dark ? '#a855f715' : '#7c3aed11'} !important; transform: translateY(-1px); }
   .og-corner { position: absolute; width: 10px; height: 10px; border-style: solid; pointer-events: none; border-color: ${dark ? '#a855f722' : '#7c3aed22'}; }
   .og-corner-tl { top: 5px; left: 5px; border-width: 1px 0 0 1px; }
   .og-corner-tr { top: 5px; right: 5px; border-width: 1px 1px 0 0; }

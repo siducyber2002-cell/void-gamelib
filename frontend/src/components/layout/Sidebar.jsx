@@ -562,7 +562,7 @@ const NAV_SECTIONS = [
     items: [
       { to: '/',          icon: Home,           label: 'Home'       },
       { to: '/library',   icon: BookOpen,       label: 'My Library' },
-      { to: '/trending',  icon: Flame,          label: 'Trending',  badge: 'hot' },
+      { to: '/trending',  icon: Flame,          label: 'Trending'   },
       { to: '/news',      icon: Newspaper,      label: 'News'       },
     ],
   },
@@ -821,7 +821,14 @@ export default function Sidebar({ open, onClose, width = 248, setWidth = () => {
           letter-spacing: 0.06em;
           transition: all 0.18s ease;
         }
-        .sb-logout:hover { background: #1a050a !important; border-color: #ef444444 !important; color: #ef4444 !important; }
+        .sb-logout:hover {
+          background: #1a050a !important; border-color: #ef444455 !important; color: #ef4444 !important;
+          transform: translateY(-1px);
+          box-shadow: 0 6px 16px -4px rgba(239,68,68,0.35), inset 0 1px 0 rgba(255,255,255,0.05) !important;
+        }
+        .sb-logout:active { transform: translateY(0) scale(0.97); }
+        .sb-logout svg { transition: transform 0.18s ease; }
+        .sb-logout:hover svg { transform: translateX(2px); }
 
         /* ── Resize handle ── */
         .sb-resize-handle {
@@ -856,7 +863,17 @@ export default function Sidebar({ open, onClose, width = 248, setWidth = () => {
           border: 1px solid ${t.bg};
         }
         .sb-scrollbar::-webkit-scrollbar-thumb:hover { background: ${t.accent}; }
-        .sb-user-card:hover { border-color: ${t.accent}44 !important; background: ${t.accentGlow} !important; }
+        .sb-user-card { transition: all 0.22s ease; }
+        .sb-user-card:hover {
+          border-color: ${t.accent}44 !important; background: ${t.accentGlow} !important;
+          transform: translateY(-1px);
+          box-shadow: ${dark
+            ? '0 8px 20px -4px rgba(124,58,237,0.35), inset 0 1px 0 rgba(255,255,255,0.06)'
+            : '0 8px 20px -4px rgba(124,58,237,0.2), inset 0 1px 0 rgba(255,255,255,0.7)'} !important;
+        }
+        .sb-user-card:active { transform: translateY(0) scale(0.985); }
+        .sb-user-avatar { transition: transform 0.22s ease, box-shadow 0.22s ease; }
+        .sb-user-card:hover .sb-user-avatar { transform: scale(1.07); }
 
         /* ── 3D Aura edge — flowing neon rim light on the sidebar's right border.
              Anchored with top:0 + bottom:0 (not height:100%) so it always spans
@@ -1120,7 +1137,7 @@ export default function Sidebar({ open, onClose, width = 248, setWidth = () => {
                 : '0 3px 10px rgba(80,60,140,0.1), inset 0 1px 0 rgba(255,255,255,0.6)',
             }}
           >
-            <div style={{
+            <div className="sb-user-avatar" style={{
               width: 34, height: 34, borderRadius: '50%', flexShrink: 0, position: 'relative',
               background: 'linear-gradient(135deg, #6366f1, #a855f7)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -1135,6 +1152,7 @@ export default function Sidebar({ open, onClose, width = 248, setWidth = () => {
                 <span style={{
                   position: 'absolute', bottom: -1, right: -1, width: 8, height: 8, borderRadius: '50%',
                   background: '#22c55e', boxShadow: '0 0 5px #22c55e', border: `2px solid ${t.surface}`,
+                  animation: 'sb-pulse 2.4s ease-in-out infinite',
                 }} />
               )}
             </div>
@@ -1148,7 +1166,7 @@ export default function Sidebar({ open, onClose, width = 248, setWidth = () => {
                     {user?.email || ''}
                   </p>
                 </div>
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 5px #22c55e', flexShrink: 0 }} />
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 5px #22c55e', flexShrink: 0, animation: 'sb-pulse 2.4s ease-in-out infinite' }} />
               </>
             )}
           </div>
