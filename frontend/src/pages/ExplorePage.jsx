@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { useLibrary } from '../context/LibraryContext'
+import toast from 'react-hot-toast'
 
 const RAWG_KEY = 'cf38811b97cf43bbb8d88c606ed4e73c'
 
@@ -372,9 +373,21 @@ export default function DiscoverPage() {
 
   // Library — backed by the real API via LibraryContext
   const { isInLibrary, addToLibrary, removeFromLibrary } = useLibrary()
-  const toggleLibrary = useCallback((game) => {
-    if (isInLibrary(game.slug)) removeFromLibrary(game.slug)
-    else addToLibrary(toLibraryPayload(game))
+  const toggleLibrary = useCallback(async (game) => {
+    if (isInLibrary(game.slug)) {
+      await removeFromLibrary(game.slug)
+      toast.success(`Removed ${game.name} from library`)
+      return
+    }
+    const added = await addToLibrary(toLibraryPayload(game))
+    if (added) {
+      toast.success(`Added ${game.name} to library`)
+    } else {
+      // addToLibrary swallows real errors internally and just returns false —
+      // could mean "already in library" OR a failed request. Check devtools
+      // console for a "Failed to add to library" log to tell which one.
+      toast.error(`Couldn't add ${game.name} — check console for details`)
+    }
   }, [isInLibrary, addToLibrary, removeFromLibrary])
 
   // Search debounce
@@ -413,6 +426,25 @@ export default function DiscoverPage() {
 
   useEffect(() => { setPage(1) }, [genre, platform, year, rating, sortBy, search])
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [page])
+
+  // Shuffle the front page every 5 minutes — only when someone's looking at
+  // the plain default view (no search/filters, default sort, page 1), so we
+  // don't shuffle results out from under someone mid-search or mid-browse.
+  const isDefaultView = !search && genre === 'All' && platform === 'All' && year === 'All' && rating === 'All' && sortBy === '-added' && page === 1
+  useEffect(() => {
+    if (!isDefaultView) return
+    const id = setInterval(() => {
+      setGames(prev => {
+        const shuffled = [...prev]
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1))
+          ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+        }
+        return shuffled
+      })
+    }, 5 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [isDefaultView])
 
   const activeFilters = [
     genre    !== 'All' && { label: genre,        clear: () => setGenre('All')    },
@@ -505,8 +537,8 @@ export default function DiscoverPage() {
           style={{ background: surfaceBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
         >
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: accent }}>VOID Database</p>
-            <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>Explore Games</h1>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: accent }}>RAWG Database</p>
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>Discover Games</h1>
             <p className="text-xs sm:text-sm mt-2" style={{ color: textSub }}>
               Explore 500,000+ games
               {!loading && totalCount > 0 && (
