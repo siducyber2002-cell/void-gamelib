@@ -29,6 +29,17 @@ class FriendStatus(str, enum.Enum):
     blocked  = "blocked"
 
 
+class GroupRole(str, enum.Enum):
+    owner  = "owner"
+    member = "member"
+
+
+class GroupRequestStatus(str, enum.Enum):
+    pending  = "pending"
+    accepted = "accepted"
+    rejected = "rejected"
+
+
 # ─── User ────────────────────────────────────────────────
 class User(Base):
     __tablename__ = "users"
@@ -81,6 +92,7 @@ class User(Base):
     sent_messages      = relationship("DirectMessage",   foreign_keys="DirectMessage.sender_id",   back_populates="sender",   cascade="all, delete")
     received_messages  = relationship("DirectMessage",   foreign_keys="DirectMessage.receiver_id", back_populates="receiver", cascade="all, delete")
     streak_logs         = relationship("StreakLog",       back_populates="user",    cascade="all, delete")
+    group_memberships   = relationship("GroupMembership", back_populates="user",    cascade="all, delete")
 
 
 # ─── Streak Log (one row per day the user was active) ────
@@ -279,3 +291,81 @@ class Notification(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     user = relationship("User", back_populates="notifications")
+
+
+# ─── Groups (separate from friends/DMs — own chat space) ────
+class Group(Base):
+    __tablename__ = "groups"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    name            = Column(String(100), nullable=False, index=True)
+    description     = Column(Text, default="")
+    banner_url      = Column(String(500), default="")
+    tier            = Column(String(30), default="Casual")       # "Elite Tier" | "Casual" | "Hardcore" | "Tech" ...
+    activity_status = Column(String(50), default="Active now")   # "Active now" | "Weekly Raids" | "Ranked Tier"
+    highlight_tag   = Column(String(50), default="")             # e.g. "3 spots left"
+    directives      = Column(Text, default="")                   # newline-separated rules, split in the router
+    owner_id        = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at      = Column(DateTime(timezone=True), server_default=func.now())
+
+    owner       = relationship("User", foreign_keys=[owner_id])
+    memberships = relationship("GroupMembership", back_populates="group", cascade="all, delete")
+    messages    = relationship("GroupMessage",    back_populates="group", cascade="all, delete")
+    media       = relationship("GroupMedia",      back_populates="group", cascade="all, delete")
+    join_requests = relationship("GroupJoinRequest", back_populates="group", cascade="all, delete")
+
+
+class GroupMembership(Base):
+    __tablename__ = "group_memberships"
+    __table_args__ = (UniqueConstraint("group_id", "user_id", name="uq_group_member"),)
+
+    id        = Column(Integer, primary_key=True, index=True)
+    group_id  = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    user_id   = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    role      = Column(Enum(GroupRole), default=GroupRole.member)
+    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("Group", back_populates="memberships")
+    user  = relationship("User", back_populates="group_memberships")
+
+
+class GroupMessage(Base):
+    __tablename__ = "group_messages"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    group_id   = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    author_id  = Column(Integer, ForeignKey("users.id"), nullable=False)
+    content    = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group  = relationship("Group", back_populates="messages")
+    author = relationship("User")
+
+
+class GroupMedia(Base):
+    __tablename__ = "group_media"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    group_id       = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    image_url      = Column(String(500), nullable=False)
+    uploaded_by_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at     = Column(DateTime(timezone=True), server_default=func.now())
+
+    group       = relationship("Group", back_populates="media")
+    uploaded_by = relationship("User")
+
+
+class GroupJoinRequest(Base):
+    """A user asking to join a group they aren't a member of yet. The
+    owner reviews these and accepts/rejects — kept as its own state
+    instead of faking it with a membership role flag."""
+    __tablename__ = "group_join_requests"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    group_id   = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    status     = Column(Enum(GroupRequestStatus), default=GroupRequestStatus.pending, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    group = relationship("Group", back_populates="join_requests")
+    user  = relationship("User")

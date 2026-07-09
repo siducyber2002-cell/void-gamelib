@@ -1,7 +1,7 @@
 from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
-from models.models import GameStatus, FriendStatus
+from models.models import GameStatus, FriendStatus, GroupRole, GroupRequestStatus
 
 
 # ─── Auth ────────────────────────────────────────────────
@@ -279,5 +279,85 @@ class DMMessageOut(BaseModel):
     content:     str
     is_read:     bool
     created_at:  datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ─── Groups (separate from Friends/DMs) ─────────────────
+class GroupCreate(BaseModel):
+    name:             str
+    description:      Optional[str] = ""
+    banner_url:       Optional[str] = ""
+    tier:             Optional[str] = "Casual"
+    activity_status:  Optional[str] = "Active now"
+    highlight_tag:    Optional[str] = ""
+    directives:       Optional[str] = ""   # newline-separated; split into a list server-side
+
+
+class GroupOut(BaseModel):
+    id:                     int
+    name:                   str
+    description:            str
+    banner_url:             str
+    tier:                   str
+    activity_status:        str
+    highlight_tag:          str
+    directives:             List[str]
+    member_count:           int
+    online_count:           int
+    is_member:              bool
+    is_owner:               bool
+    owner_id:               int
+    created_at:             datetime
+    has_pending_request:    bool = False   # true if the CURRENT user has an outstanding request
+    pending_requests_count: int = 0        # only meaningful to the owner; 0 for everyone else
+
+
+class GroupMemberOut(BaseModel):
+    id:         int
+    username:   str
+    avatar_url: str
+    online:     bool
+    role:       GroupRole
+    is_friend:  bool = False   # is this member already a friend of the current user?
+    is_self:    bool = False   # is this member row the current user themself?
+
+    model_config = {"from_attributes": True}
+
+
+class GroupJoinRequestOut(BaseModel):
+    id:         int
+    group_id:   int
+    status:     GroupRequestStatus
+    created_at: datetime
+    user:       UserPublic
+
+    model_config = {"from_attributes": True}
+
+
+class GroupMessageCreate(BaseModel):
+    content: str
+
+
+class GroupMessageOut(BaseModel):
+    id:         int
+    group_id:   int
+    author_id:  int
+    content:    str
+    created_at: datetime
+    author:     UserPublic
+
+    model_config = {"from_attributes": True}
+
+
+class GroupMediaCreate(BaseModel):
+    image_url: str
+
+
+class GroupMediaOut(BaseModel):
+    id:          int
+    image_url:   str
+    created_at:  datetime
+    uploaded_by: UserPublic
 
     model_config = {"from_attributes": True}
