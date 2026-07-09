@@ -17,6 +17,7 @@ import LibraryPage from './pages/LibraryPage'
 import TrendingPage from './pages/TrendingPage'
 import NewsPage from './pages/NewsPage'
 import CommunityPage from './pages/CommunityPage'
+import GroupDetailPage from './pages/GroupDetailPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
 import SettingsPage from './pages/SettingsPage'
@@ -212,6 +213,7 @@ export default function App() {
                     <Route path="/trending" element={<TrendingPage />} />
                     <Route path="/news" element={<NewsPage />} />
                     <Route path="/community" element={<CommunityPage />} />
+                    <Route path="/community/:groupId" element={<GroupDetailPage />} />
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/settings" element={<SettingsPage />} />
