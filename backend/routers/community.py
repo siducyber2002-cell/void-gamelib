@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from typing import List
 from db.database import get_db
@@ -11,7 +11,7 @@ from models.models import (
 from schemas.schemas import (
     MessageCreate, MessageOut,
     GroupCreate, GroupOut, GroupMemberOut,
-    GroupMessageCreate, GroupMessageOut,
+    GroupMessageOut,
     GroupMediaOut,
     GroupJoinRequestOut,
 )
@@ -26,6 +26,26 @@ from routers.profile import (
 
 GROUP_COVER_BUCKET = "group-covers"
 GROUP_MEDIA_BUCKET = "group-media"
+GROUP_ATTACHMENT_BUCKET = "group-attachments"
+MAX_ATTACHMENT_MB = 15
+MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024
+
+
+def _attachment_kind(content_type: str) -> str:
+    """Classify an uploaded file so the frontend knows how to render it —
+    inline image, an <audio> player for voice notes, or a generic file
+    chip with a download link for everything else."""
+    if content_type in ALLOWED_CONTENT_TYPES:
+        return "image"
+    if content_type.startswith("audio/"):
+        return "voice"
+    return "file"
+
+
+def _safe_extension(filename: str, fallback: str = "bin") -> str:
+    if filename and "." in filename:
+        return filename.rsplit(".", 1)[-1][:10]  # cap absurdly long "extensions"
+    return fallback
 
 router = APIRouter(prefix="/api/community", tags=["Community"])
 
@@ -413,15 +433,50 @@ def get_group_messages(
 
 
 @router.post("/groups/{group_id}/messages", response_model=GroupMessageOut, status_code=201)
-def send_group_message(
+async def send_group_message(
     group_id: int,
-    payload: GroupMessageCreate,
+    content: str = Form(""),
+    file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     group = _get_group_or_404(group_id, db)
     _require_member(group, current_user)
-    msg = GroupMessage(group_id=group_id, author_id=current_user.id, content=payload.content)
+
+    text = content.strip()
+    if not text and not file:
+        raise HTTPException(400, "Message needs text or an attachment")
+
+    attachment_url  = ""
+    attachment_type = ""
+    attachment_name = ""
+    attachment_size = 0
+
+    if file:
+        contents = await file.read()
+        if len(contents) > MAX_ATTACHMENT_BYTES:
+            raise HTTPException(400, f"Attachments must be under {MAX_ATTACHMENT_MB}MB")
+
+        ext = _safe_extension(file.filename)
+        path = f"{group_id}/{uuid.uuid4().hex}.{ext}"
+        content_type = file.content_type or "application/octet-stream"
+        try:
+            supabase.storage.from_(GROUP_ATTACHMENT_BUCKET).upload(
+                path, contents, {"content-type": content_type, "upsert": "true"}
+            )
+            attachment_url = supabase.storage.from_(GROUP_ATTACHMENT_BUCKET).get_public_url(path)
+        except Exception as e:
+            raise HTTPException(500, f"Upload failed: {e}")
+
+        attachment_type = _attachment_kind(content_type)
+        attachment_name = file.filename or "file"
+        attachment_size = len(contents)
+
+    msg = GroupMessage(
+        group_id=group_id, author_id=current_user.id, content=text,
+        attachment_url=attachment_url, attachment_type=attachment_type,
+        attachment_name=attachment_name, attachment_size=attachment_size,
+    )
     db.add(msg)
     db.commit()
     db.refresh(msg)

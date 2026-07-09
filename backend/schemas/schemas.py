@@ -340,12 +340,16 @@ class GroupMessageCreate(BaseModel):
 
 
 class GroupMessageOut(BaseModel):
-    id:         int
-    group_id:   int
-    author_id:  int
-    content:    str
-    created_at: datetime
-    author:     UserPublic
+    id:               int
+    group_id:         int
+    author_id:        int
+    content:          str
+    created_at:       datetime
+    author:           UserPublic
+    attachment_url:   str = ""
+    attachment_type:  str = ""   # "image" | "voice" | "file" | ""
+    attachment_name:  str = ""
+    attachment_size:  int = 0
 
     model_config = {"from_attributes": True}
 

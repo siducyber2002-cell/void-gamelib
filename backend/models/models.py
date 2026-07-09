@@ -335,8 +335,14 @@ class GroupMessage(Base):
     id         = Column(Integer, primary_key=True, index=True)
     group_id   = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
     author_id  = Column(Integer, ForeignKey("users.id"), nullable=False)
-    content    = Column(Text, nullable=False)
+    content    = Column(Text, nullable=False, default="")  # can be empty if the message is attachment-only
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    # ── optional attachment (image / voice note / any other file) ──
+    attachment_url   = Column(String(500), default="")
+    attachment_type  = Column(String(20),  default="")   # "image" | "voice" | "file" | ""
+    attachment_name  = Column(String(300), default="")
+    attachment_size  = Column(Integer,     default=0)     # bytes
 
     group  = relationship("Group", back_populates="messages")
     author = relationship("User")
