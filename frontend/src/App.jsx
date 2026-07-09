@@ -12,7 +12,7 @@ import Layout from './components/layout/Layout'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import HomePage from './pages/HomePage'
-import DiscoverPage from './pages/DiscoverPage'
+import ExplorePage from './pages/ExplorePage'
 import LibraryPage from './pages/LibraryPage'
 import TrendingPage from './pages/TrendingPage'
 import NewsPage from './pages/NewsPage'
@@ -208,7 +208,7 @@ export default function App() {
                   <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
                   <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
                     <Route path="/" element={<HomePage />} />
-                    <Route path="/discover" element={<DiscoverPage />} />
+                    <Route path="/discover" element={<ExplorePage />} />
                     <Route path="/library" element={<LibraryPage />} />
                     <Route path="/trending" element={<TrendingPage />} />
                     <Route path="/news" element={<NewsPage />} />
