@@ -3,6 +3,7 @@ import secrets
 import urllib.parse
 
 import httpx
+from dotenv import load_dotenv
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordRequestForm
@@ -17,6 +18,13 @@ from models.models import User, StreakLog
 from schemas.schemas import UserRegister, UserOut, UserUpdate, TokenResponse, ChangePassword, UserPublic, StreakOut
 from utils.auth import hash_password, verify_password, create_access_token, get_current_user
 from utils.streak import update_user_streak
+
+# Loads variables from a .env file in the backend's working directory into
+# os.environ. Safe to call even if main.py already does this elsewhere —
+# load_dotenv() never overwrites a var that's already set, so this just
+# guarantees the Google config below is populated no matter how the rest
+# of the app is wired up.
+load_dotenv()
 
 
 class DeleteAccountRequest(BaseModel):
