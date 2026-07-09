@@ -5,13 +5,28 @@ import toast from 'react-hot-toast'
 import {
   ArrowLeft, Send, Users, Circle, ShieldCheck, UserPlus,
   Check, X, Loader2, Clock, LogOut, Search, Bell, Paperclip, Smile,
-  Camera, Trash2, ImagePlus,
+  Camera, Trash2, ImagePlus, Mic, Square, FileText, Download,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
 const POLL_MS = 4000
 const AVATAR_COLORS = ['#a855f7', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#ec4899']
 const avatarColor = (name = '') => AVATAR_COLORS[(name.charCodeAt(0) || 0) % AVATAR_COLORS.length]
+
+const EMOJI_LIST = [
+  '😀','😂','😅','😊','😍','😘','😎','🤔','😴','😭','😡','🥳','😱','🤯','🥺','😇',
+  '👍','👎','👏','🙌','🙏','💪','🔥','✨','⭐','💯','✅','❌','❤️','💜','💙','🖤',
+  '🎮','🕹️','🏆','🎯','⚔️','🛡️','💣','🚀','🎉','🎊','☠️','👑','🐉','🦾','🎧','📸',
+]
+
+function formatBytes(bytes) {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let n = bytes
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
+  return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`
+}
 
 function AvatarStack({ members = [], size = 26 }) {
   const shown = members.slice(0, 3)
@@ -48,6 +63,12 @@ export default function GroupDetailPage() {
   const [media, setMedia] = useState([])
   const [requests, setRequests] = useState([])
   const [input, setInput] = useState('')
+  const [pendingFile, setPendingFile] = useState(null)
+  const [pendingPreviewUrl, setPendingPreviewUrl] = useState(null)
+  const [sending, setSending] = useState(false)
+  const [showEmoji, setShowEmoji] = useState(false)
+  const [recording, setRecording] = useState(false)
+  const [recordSeconds, setRecordSeconds] = useState(0)
   const [loading, setLoading] = useState(true)
   const [joining, setJoining] = useState(false)
   const [friendSending, setFriendSending] = useState({})
@@ -64,6 +85,10 @@ export default function GroupDetailPage() {
   const [mediaDeleting, setMediaDeleting] = useState({})
   const coverInputRef = useRef(null)
   const mediaInputRef = useRef(null)
+  const attachInputRef = useRef(null)
+  const mediaRecorderRef = useRef(null)
+  const audioChunksRef = useRef([])
+  const recordTimerRef = useRef(null)
 
   const bottomRef = useRef(null)
   const pollRef = useRef(null)
@@ -113,6 +138,13 @@ export default function GroupDetailPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    return () => {
+      if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+      clearInterval(recordTimerRef.current)
+    }
+  }, [pendingPreviewUrl])
+
   const handleRequestJoin = async () => {
     setJoining(true)
     try {
@@ -150,20 +182,110 @@ export default function GroupDetailPage() {
   }
 
   const sendMsg = async () => {
-    if (!input.trim()) return
-    const content = input.trim()
-    setInput('')
+    const text = input.trim()
+    if (!text && !pendingFile) return
+    setSending(true)
     try {
-      const res = await axios.post(`/api/community/groups/${groupId}/messages`, { content })
+      const fd = new FormData()
+      fd.append('content', text)
+      if (pendingFile) fd.append('file', pendingFile)
+      const res = await axios.post(`/api/community/groups/${groupId}/messages`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
       setMessages(prev => [...prev, res.data])
-    } catch {
-      toast.error('Message failed to send')
+      setInput('')
+      clearPendingFile()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Message failed to send')
+    } finally {
+      setSending(false)
     }
   }
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       sendMsg()
+    }
+  }
+
+  // ── file attachment picker ──────────────────────────────────
+  const handleAttachPick = () => attachInputRef.current?.click()
+
+  const handleAttachChange = (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error('Attachments must be under 15MB')
+      return
+    }
+    if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+    setPendingFile(file)
+    setPendingPreviewUrl(file.type.startsWith('image/') ? URL.createObjectURL(file) : null)
+  }
+
+  const clearPendingFile = () => {
+    if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
+    setPendingFile(null)
+    setPendingPreviewUrl(null)
+  }
+
+  // ── emoji picker ─────────────────────────────────────────────
+  const insertEmoji = (emoji) => setInput(prev => prev + emoji)
+
+  // ── voice note recording (browser MediaRecorder) ────────────
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      audioChunksRef.current = []
+      recorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data) }
+      recorder.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        clearInterval(recordTimerRef.current)
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' })
+        setRecording(false)
+        setRecordSeconds(0)
+        if (blob.size > 0) await sendVoiceNote(blob)
+      }
+      mediaRecorderRef.current = recorder
+      recorder.start()
+      setRecording(true)
+      setRecordSeconds(0)
+      recordTimerRef.current = setInterval(() => setRecordSeconds(s => s + 1), 1000)
+    } catch {
+      toast.error('Microphone access denied or unavailable')
+    }
+  }
+
+  const stopRecording = () => mediaRecorderRef.current?.stop()
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current) {
+      mediaRecorderRef.current.onstop = () => {
+        mediaRecorderRef.current.stream?.getTracks?.().forEach(t => t.stop())
+      }
+      mediaRecorderRef.current.stop()
+    }
+    clearInterval(recordTimerRef.current)
+    setRecording(false)
+    setRecordSeconds(0)
+  }
+
+  const sendVoiceNote = async (blob) => {
+    setSending(true)
+    try {
+      const fd = new FormData()
+      fd.append('content', '')
+      fd.append('file', new File([blob], `voice-note-${Date.now()}.webm`, { type: 'audio/webm' }))
+      const res = await axios.post(`/api/community/groups/${groupId}/messages`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setMessages(prev => [...prev, res.data])
+    } catch {
+      toast.error('Voice note failed to send')
+    } finally {
+      setSending(false)
     }
   }
 
@@ -331,22 +453,22 @@ export default function GroupDetailPage() {
                 <button
                   onClick={handleCoverPick}
                   disabled={coverUploading}
-                  className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur text-white text-xs font-semibold hover:bg-black/60 disabled:opacity-60"
+                  className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-black/40 backdrop-blur text-white text-xs font-semibold hover:bg-black/60 disabled:opacity-60"
                 >
                   {coverUploading ? <Loader2 size={13} className="animate-spin" /> : <Camera size={13} />}
-                  {coverUploading ? 'Uploading…' : 'Change Cover'}
+                  <span className="hidden sm:inline">{coverUploading ? 'Uploading…' : 'Change Cover'}</span>
                 </button>
               </>
             )}
 
-            <div className="absolute bottom-3 left-4 right-4 flex items-end justify-between gap-3">
-              <div className="flex items-end gap-3 min-w-0">
-                <div className="w-14 h-14 rounded-2xl overflow-hidden bg-violet-600 border-2 border-slate-950 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+            <div className="absolute bottom-2 sm:bottom-3 left-3 sm:left-4 right-3 sm:right-4 flex items-end justify-between gap-2 sm:gap-3 flex-wrap">
+              <div className="flex items-end gap-2 sm:gap-3 min-w-0">
+                <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-violet-600 border-2 border-slate-950 flex items-center justify-center text-white font-bold text-lg sm:text-xl flex-shrink-0">
                   {group.banner_url ? <img src={group.banner_url} className="w-full h-full object-cover" alt="" /> : group.name[0]?.toUpperCase()}
                 </div>
                 <div className="min-w-0 pb-0.5">
-                  <h2 className="font-display font-bold text-white text-lg sm:text-xl truncate drop-shadow">{group.name}</h2>
-                  <p className="text-xs text-slate-300 flex items-center gap-1.5">
+                  <h2 className="font-display font-bold text-white text-base sm:text-xl truncate drop-shadow">{group.name}</h2>
+                  <p className="text-[11px] sm:text-xs text-slate-300 flex items-center gap-1.5">
                     <Circle size={7} className="text-emerald-400 fill-current" /> {group.activity_status} · {group.member_count.toLocaleString()} Operators
                   </p>
                 </div>
@@ -354,19 +476,19 @@ export default function GroupDetailPage() {
 
               <div className="flex-shrink-0 pb-0.5">
                 {group.is_owner ? (
-                  <button onClick={openAddMembers} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg">
+                  <button onClick={openAddMembers} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg">
                     <UserPlus size={14} /> Invite
                   </button>
                 ) : group.is_member ? (
-                  <button onClick={handleLeave} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-rose-300 text-xs sm:text-sm font-bold hover:bg-rose-500/20">
+                  <button onClick={handleLeave} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-rose-300 text-xs sm:text-sm font-bold hover:bg-rose-500/20">
                     <LogOut size={14} /> Leave
                   </button>
                 ) : group.has_pending_request ? (
-                  <button onClick={handleCancelRequest} disabled={joining} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-slate-300 text-xs sm:text-sm font-bold disabled:opacity-50">
-                    <Clock size={14} /> Cancel Request
+                  <button onClick={handleCancelRequest} disabled={joining} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-slate-300 text-xs sm:text-sm font-bold disabled:opacity-50">
+                    <Clock size={14} /> <span>Cancel</span><span className="hidden sm:inline">&nbsp;Request</span>
                   </button>
                 ) : (
-                  <button onClick={handleRequestJoin} disabled={joining} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg disabled:opacity-50">
+                  <button onClick={handleRequestJoin} disabled={joining} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg disabled:opacity-50">
                     {joining ? <Loader2 size={14} className="animate-spin" /> : null}
                     {joining ? 'Sending…' : 'Request to Join'}
                   </button>
@@ -400,9 +522,42 @@ export default function GroupDetailPage() {
                   </div>
                   <div className={`max-w-xs lg:max-w-md flex flex-col gap-1 ${self ? 'items-end' : 'items-start'}`}>
                     {!self && <span className="text-xs font-bold text-violet-400">{msg.author.username}</span>}
-                    <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${self ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-100'}`}>
-                      {msg.content}
-                    </div>
+
+                    {msg.attachment_type === 'image' && (
+                      <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block rounded-2xl overflow-hidden max-w-[240px] border border-slate-700">
+                        <img src={msg.attachment_url} alt={msg.attachment_name} className="w-full max-h-64 object-cover" />
+                      </a>
+                    )}
+
+                    {msg.attachment_type === 'voice' && (
+                      <div className={`rounded-2xl px-3 py-2 ${self ? 'bg-violet-600' : 'bg-slate-800'}`}>
+                        <audio controls src={msg.attachment_url} className="h-9" style={{ maxWidth: 220 }} />
+                      </div>
+                    )}
+
+                    {msg.attachment_type === 'file' && (
+                      <a
+                        href={msg.attachment_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={msg.attachment_name}
+                        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-2xl border ${self ? 'bg-violet-600 border-violet-500' : 'bg-slate-800 border-slate-700'} hover:opacity-90 transition`}
+                      >
+                        <FileText size={18} className="text-white flex-shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-white truncate max-w-[160px]">{msg.attachment_name}</p>
+                          <p className="text-[10px] text-white/70">{formatBytes(msg.attachment_size)}</p>
+                        </div>
+                        <Download size={14} className="text-white/80 flex-shrink-0 ml-1" />
+                      </a>
+                    )}
+
+                    {msg.content && (
+                      <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${self ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-100'}`}>
+                        {msg.content}
+                      </div>
+                    )}
+
                     <span className="text-xs text-slate-500">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                 </div>
@@ -413,22 +568,80 @@ export default function GroupDetailPage() {
 
           {/* input */}
           {group.is_member && (
-            <div className="px-5 py-4 border-t border-slate-800">
-              <div className="flex gap-2 items-center bg-slate-900 border border-slate-800 rounded-2xl px-3 py-2">
-                <button className="text-slate-500 hover:text-slate-300 flex-shrink-0"><Paperclip size={17} /></button>
-                <textarea
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={`Transmit message to ${group.name}...`}
-                  rows={1}
-                  className="flex-1 bg-transparent text-white placeholder-slate-500 text-sm resize-none outline-none py-1"
-                />
-                <button className="text-slate-500 hover:text-slate-300 flex-shrink-0"><Smile size={17} /></button>
-                <button onClick={sendMsg} disabled={!input.trim()} className="w-9 h-9 rounded-xl flex items-center justify-center text-white bg-gradient-to-br from-violet-600 to-purple-500 disabled:opacity-40 flex-shrink-0">
-                  <Send size={15} />
-                </button>
-              </div>
+            <div className="px-3 sm:px-5 py-3 sm:py-4 border-t border-slate-800 relative">
+
+              {showEmoji && (
+                <div className="absolute bottom-full right-2 sm:right-5 mb-2 w-64 max-w-[85vw] bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-2xl z-20">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Emoji</span>
+                    <button onClick={() => setShowEmoji(false)} className="text-slate-500 hover:text-white"><X size={14} /></button>
+                  </div>
+                  <div className="grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
+                    {EMOJI_LIST.map(e => (
+                      <button
+                        key={e}
+                        onClick={() => insertEmoji(e)}
+                        className="text-lg hover:bg-slate-800 rounded-lg p-1 transition"
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {pendingFile && (
+                <div className="flex items-center gap-2 mb-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 w-fit max-w-full">
+                  {pendingPreviewUrl ? (
+                    <img src={pendingPreviewUrl} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                  ) : (
+                    <FileText size={18} className="text-violet-400 flex-shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-white truncate max-w-[180px]">{pendingFile.name}</p>
+                    <p className="text-[10px] text-slate-500">{formatBytes(pendingFile.size)}</p>
+                  </div>
+                  <button onClick={clearPendingFile} className="text-slate-500 hover:text-white flex-shrink-0 ml-1"><X size={14} /></button>
+                </div>
+              )}
+
+              {recording ? (
+                <div className="flex items-center gap-3 bg-slate-900 border border-rose-500/40 rounded-2xl px-4 py-2.5">
+                  <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+                  </span>
+                  <span className="text-sm text-white font-semibold flex-1">
+                    Recording… {String(Math.floor(recordSeconds / 60)).padStart(2, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
+                  </span>
+                  <button onClick={cancelRecording} className="text-slate-400 hover:text-white text-xs font-semibold px-2">Cancel</button>
+                  <button onClick={stopRecording} className="w-9 h-9 rounded-xl flex items-center justify-center text-white bg-rose-600 hover:bg-rose-500 flex-shrink-0">
+                    <Square size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-1 sm:gap-2 items-center bg-slate-900 border border-slate-800 rounded-2xl px-2 sm:px-3 py-2">
+                  <input ref={attachInputRef} type="file" onChange={handleAttachChange} className="hidden" />
+                  <button onClick={handleAttachPick} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1"><Paperclip size={16} /></button>
+                  <textarea
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={`Message ${group.name}...`}
+                    rows={1}
+                    className="flex-1 min-w-0 bg-transparent text-white placeholder-slate-500 text-sm resize-none outline-none py-1"
+                  />
+                  <button onClick={() => setShowEmoji(s => !s)} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1"><Smile size={16} /></button>
+                  <button onClick={startRecording} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1"><Mic size={16} /></button>
+                  <button
+                    onClick={sendMsg}
+                    disabled={(!input.trim() && !pendingFile) || sending}
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white bg-gradient-to-br from-violet-600 to-purple-500 disabled:opacity-40 flex-shrink-0"
+                  >
+                    {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -560,7 +773,7 @@ export default function GroupDetailPage() {
 
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setAddOpen(false)}>
-          <div onClick={e => e.stopPropagation()} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-3 max-h-[78vh]">
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-3 max-h-[78vh]">
             <div className="flex items-center justify-between">
               <h2 className="font-display font-bold text-white text-lg">Invite Friends</h2>
               <button onClick={() => setAddOpen(false)} className="text-slate-500 hover:text-white"><X size={18} /></button>

@@ -129,19 +129,19 @@ export default function CommunityPage() {
             Connect with millions of gamers across the globe. Join specialized groups, participate in tournaments, and dominate the leaderboard.
           </p>
         </div>
-        <div className="flex gap-3 flex-shrink-0">
-          <div className="relative">
+        <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0 w-full md:w-auto">
+          <div className="relative flex-1 sm:flex-none">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search groups or games..."
-              className="pl-9 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white placeholder-slate-500 outline-none focus:border-violet-500 w-56"
+              className="pl-9 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white placeholder-slate-500 outline-none focus:border-violet-500 w-full sm:w-56"
             />
           </div>
           <button
             onClick={() => setShowCreate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-sm font-bold hover:opacity-90 transition whitespace-nowrap"
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-sm font-bold hover:opacity-90 transition whitespace-nowrap w-full sm:w-auto"
           >
             <Plus size={16} /> Create Group
           </button>
@@ -162,9 +162,9 @@ export default function CommunityPage() {
               <div
                 key={g.id}
                 onClick={() => navigate(`/community/${g.id}`)}
-                className="flex gap-4 bg-slate-900/60 border border-slate-800 rounded-2xl p-3 text-left hover:border-violet-600/60 transition group cursor-pointer"
+                className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-slate-900/60 border border-slate-800 rounded-2xl p-3 text-left hover:border-violet-600/60 transition group cursor-pointer"
               >
-                <div className="relative w-36 h-24 sm:w-44 sm:h-28 flex-shrink-0 rounded-xl overflow-hidden bg-slate-800">
+                <div className="relative w-full h-36 sm:w-44 sm:h-28 flex-shrink-0 rounded-xl overflow-hidden bg-slate-800">
                   {g.banner_url && <img src={g.banner_url} alt={g.name} className="w-full h-full object-cover" />}
                   {g.tier && (
                     <span className={`absolute top-2 left-2 text-[9px] font-bold px-2 py-0.5 rounded-md tracking-wide ${tierClass(g.tier)}`}>
@@ -174,7 +174,7 @@ export default function CommunityPage() {
                 </div>
 
                 <div className="flex-1 min-w-0 py-0.5 flex flex-col">
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
                     <h3 className="font-display font-bold text-lg text-violet-400 group-hover:text-violet-300 truncate">{g.name}</h3>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {g.highlight_tag && <span className="text-xs text-amber-400 font-semibold whitespace-nowrap">{g.highlight_tag}</span>}
@@ -217,7 +217,7 @@ export default function CommunityPage() {
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowCreate(false)}>
-          <form onClick={e => e.stopPropagation()} onSubmit={handleCreate} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col gap-3">
+          <form onClick={e => e.stopPropagation()} onSubmit={handleCreate} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
               <h2 className="font-display font-bold text-white text-lg">Create a Group</h2>
               <button type="button" onClick={() => setShowCreate(false)} className="text-slate-500 hover:text-white"><X size={18} /></button>
@@ -225,7 +225,7 @@ export default function CommunityPage() {
             <input required placeholder="Group name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700 focus:border-violet-500" />
             <textarea placeholder="Description" rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700 focus:border-violet-500 resize-none" />
             <p className="text-xs text-slate-500 -mt-1">You can upload cover art once the group is created.</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <select value={form.tier} onChange={e => setForm(f => ({ ...f, tier: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700">
                 <option>Casual</option>
                 <option>Elite Tier</option>

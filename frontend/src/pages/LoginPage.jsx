@@ -140,6 +140,7 @@ export default function LoginPage() {
           min-height: 100vh;
           display: flex;
           overflow: hidden;
+          overscroll-behavior-y: contain;
           position: relative;
           font-family: 'Rajdhani', sans-serif;
           transition: background 0.4s;
@@ -174,6 +175,34 @@ export default function LoginPage() {
           border: none;
           pointer-events: none;
         }
+
+        /* ── Android/mobile-browser fix ──────────────────────────────
+           Plain 100vh is measured against the browser's LARGEST possible
+           viewport (address bar hidden). On Android Chrome, that's taller
+           than what's actually visible when the address bar is showing,
+           so .void-root's min-height:100vh created a "phantom" scrollable
+           region below the fold — since the video background is
+           position:fixed (and correctly tracks the real visible viewport),
+           scrolling into that phantom region revealed blank space under
+           it instead of more video: the "gap / cut off" bug. 100dvh
+           tracks the actual current viewport instead, so this override
+           only applies in browsers that understand it (Android Chrome
+           108+ / most current devices) and leaves the 100vh rules above
+           as a harmless fallback everywhere else. */
+        @supports (height: 100dvh) {
+          .void-root { min-height: 100dvh; }
+          .yt-bg-wrap iframe { min-height: 100dvh; min-width: 177.78dvh; }
+        }
+
+        /* Large-screen Android phones in landscape can exceed the 900px
+           width breakpoint below and get the two-column desktop layout —
+           but at a short landscape height, .void-root's overflow:hidden
+           (desktop default) would clip content instead of scrolling to
+           it. This catches that by height rather than width. */
+        @media (max-height: 560px) and (orientation: landscape) {
+          .void-root { overflow-y: auto; overflow-x: hidden; }
+        }
+
         /* Medium dark cinematic overlay — not too light, not too deep */
         .yt-overlay {
           position: fixed;
