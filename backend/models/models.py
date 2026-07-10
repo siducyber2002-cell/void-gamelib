@@ -31,6 +31,7 @@ class FriendStatus(str, enum.Enum):
 
 class GroupRole(str, enum.Enum):
     owner  = "owner"
+    admin  = "admin"
     member = "member"
 
 

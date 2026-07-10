@@ -175,6 +175,11 @@ def _require_owner(group: Group, user: User):
         raise HTTPException(403, "Only the group owner can do this")
 
 
+def _require_owner_or_admin(group: Group, membership: GroupMembership, user: User):
+    if group.owner_id != user.id and membership.role != GroupRole.admin:
+        raise HTTPException(403, "Only the group owner or an admin can do this")
+
+
 @router.get("/groups", response_model=List[GroupOut])
 def list_groups(
     db: Session = Depends(get_db),
@@ -275,7 +280,8 @@ def list_join_requests(
     current_user: User = Depends(get_current_user),
 ):
     group = _get_group_or_404(group_id, db)
-    _require_owner(group, current_user)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
     return (
         db.query(GroupJoinRequest)
         .options(joinedload(GroupJoinRequest.user))
@@ -296,7 +302,8 @@ def accept_join_request(
     current_user: User = Depends(get_current_user),
 ):
     group = _get_group_or_404(group_id, db)
-    _require_owner(group, current_user)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
 
     req = db.query(GroupJoinRequest).filter(
         GroupJoinRequest.id == request_id,
@@ -322,7 +329,8 @@ def reject_join_request(
     current_user: User = Depends(get_current_user),
 ):
     group = _get_group_or_404(group_id, db)
-    _require_owner(group, current_user)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
 
     req = db.query(GroupJoinRequest).filter(
         GroupJoinRequest.id == request_id,
@@ -338,7 +346,7 @@ def reject_join_request(
     return req
 
 
-# ── Owner directly adding a friend (skips the request queue) ────────────
+# ── Owner or admin directly adding a friend (skips the request queue) ───
 @router.post("/groups/{group_id}/members/{user_id}", response_model=GroupOut)
 def add_member_directly(
     group_id: int,
@@ -347,7 +355,8 @@ def add_member_directly(
     current_user: User = Depends(get_current_user),
 ):
     group = _get_group_or_404(group_id, db)
-    _require_owner(group, current_user)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
 
     if any(m.user_id == user_id for m in group.memberships):
         raise HTTPException(400, "That user is already in the group")
@@ -368,6 +377,41 @@ def add_member_directly(
     db.commit()
     group = _get_group_or_404(group_id, db)
     return _serialize_group(group, current_user, db)
+
+
+@router.post("/groups/{group_id}/members/{user_id}/promote", response_model=GroupMemberOut)
+def promote_member(
+    group_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    acting_membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, acting_membership, current_user)
+
+    target = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.user_id == user_id,
+    ).first()
+    if not target:
+        raise HTTPException(404, "That user isn't a member of this group")
+    if target.role in (GroupRole.owner, GroupRole.admin):
+        raise HTTPException(400, "That member is already an owner or admin")
+
+    target.role = GroupRole.admin
+    db.commit()
+
+    friend_ids = _friend_ids_for(current_user.id, db)
+    return GroupMemberOut(
+        id=target.user.id,
+        username=target.user.username,
+        avatar_url=target.user.avatar_url,
+        online=target.user.online,
+        role=target.role,
+        is_friend=target.user.id in friend_ids,
+        is_self=target.user.id == current_user.id,
+    )
 
 
 @router.post("/groups/{group_id}/leave", status_code=204)
@@ -501,6 +545,26 @@ def delete_group_message(
         db.commit()
 
 
+# ── Clear chat (owner or admin — deletes every message in the group) ────
+# Bulk sibling of delete_group_message above: that one is scoped to a
+# single message and only the author can use it; this wipes the whole
+# thread and is restricted to owner/admin, same permission tier as
+# accepting join requests or changing the cover image.
+@router.delete("/groups/{group_id}/messages", status_code=204)
+def clear_group_messages(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    membership = _require_member(group, current_user)
+    if group.owner_id != current_user.id and membership.role != GroupRole.admin:
+        raise HTTPException(403, "Only the group owner or an admin can clear the chat")
+
+    db.query(GroupMessage).filter(GroupMessage.group_id == group_id).delete(synchronize_session=False)
+    db.commit()
+
+
 @router.get("/groups/{group_id}/media", response_model=List[GroupMediaOut])
 def list_media(
     group_id: int,
@@ -566,8 +630,9 @@ def delete_media(
     ).first()
     if not media:
         return
-    # Uploader or the group owner can remove a media item.
-    if media.uploaded_by_id != current_user.id and group.owner_id != current_user.id:
+    # Uploader, the owner, or an admin can remove a media item.
+    is_admin = any(m.user_id == current_user.id and m.role == GroupRole.admin for m in group.memberships)
+    if media.uploaded_by_id != current_user.id and group.owner_id != current_user.id and not is_admin:
         raise HTTPException(403, "You can't remove this media item")
 
     try:
@@ -579,7 +644,7 @@ def delete_media(
     db.commit()
 
 
-# ── Group cover art (owner only, same pattern as profile avatar/cover) ──
+# ── Group cover art (owner or admin, same pattern as profile avatar/cover) ──
 @router.post("/groups/{group_id}/cover", response_model=GroupOut)
 async def upload_group_cover(
     group_id: int,
@@ -588,7 +653,8 @@ async def upload_group_cover(
     current_user: User = Depends(get_current_user),
 ):
     group = _get_group_or_404(group_id, db)
-    _require_owner(group, current_user)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
 
     if file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(400, "Please upload a PNG, JPG, WEBP or GIF image")
@@ -625,7 +691,8 @@ def remove_group_cover(
     current_user: User = Depends(get_current_user),
 ):
     group = _get_group_or_404(group_id, db)
-    _require_owner(group, current_user)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
 
     try:
         _delete_stored_object(GROUP_COVER_BUCKET, group.banner_url)
