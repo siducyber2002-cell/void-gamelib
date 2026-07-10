@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import {
-  ArrowLeft, Send, Users, Circle, ShieldCheck, UserPlus,
-  Check, X, Loader2, Clock, LogOut, Search, Bell, Paperclip, Smile,
-  Camera, Trash2, ImagePlus, Mic, Square, FileText, Download,
+  ArrowLeft, Send, Users, Circle, ShieldCheck, ShieldAlert, UserPlus,
+  Check, CheckCheck, X, Loader2, Clock, LogOut, Search, Bell, Paperclip, Smile,
+  Camera, Trash2, ImagePlus, Mic, FileText, Download, MoreVertical, Eraser,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -26,6 +26,13 @@ function formatBytes(bytes) {
   let n = bytes
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }
   return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+function formatMsgTime(iso) {
+  const d = new Date(iso)
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const sameDay = d.toDateString() === new Date().toDateString()
+  return sameDay ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${time}`
 }
 
 function AvatarStack({ members = [], size = 26 }) {
@@ -83,6 +90,10 @@ export default function GroupDetailPage() {
   const [coverUploading, setCoverUploading] = useState(false)
   const [mediaUploading, setMediaUploading] = useState(false)
   const [mediaDeleting, setMediaDeleting] = useState({})
+  const [showOptions, setShowOptions] = useState(false)
+  const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [promoting, setPromoting] = useState({})
   const coverInputRef = useRef(null)
   const mediaInputRef = useRef(null)
   const attachInputRef = useRef(null)
@@ -91,6 +102,7 @@ export default function GroupDetailPage() {
   const recordTimerRef = useRef(null)
 
   const bottomRef = useRef(null)
+  const shouldAutoScrollRef = useRef(true)
   const pollRef = useRef(null)
 
   const loadAll = useCallback(async () => {
@@ -109,7 +121,8 @@ export default function GroupDetailPage() {
         setMessages(msgs.data)
         setMedia(med.data)
       }
-      if (g.data.is_owner) {
+      const selfRole = m.data.find(x => x.is_self)?.role
+      if (g.data.is_owner || selfRole === 'admin') {
         const reqs = await axios.get(`/api/community/groups/${groupId}/requests`)
         setRequests(reqs.data)
       }
@@ -134,9 +147,35 @@ export default function GroupDetailPage() {
     return () => clearInterval(pollRef.current)
   }, [group?.is_member, groupId])
 
+  // Track whether the bottom-of-thread marker is actually on screen via
+  // IntersectionObserver rather than measuring scrollTop on one specific
+  // element. scrollTop math assumes the inner message pane is the thing
+  // that scrolls — if the page itself scrolls instead (common once the
+  // layout's height isn't strictly bounded, e.g. on some viewport sizes),
+  // that math never updates and the poll below keeps yanking the view
+  // back down. Intersection is measured against the real viewport, so it
+  // stays correct no matter which ancestor is actually scrolling.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const target = bottomRef.current
+    if (!target) return
+    const observer = new IntersectionObserver(
+      ([entry]) => { shouldAutoScrollRef.current = entry.isIntersecting },
+      { threshold: 0.01 }
+    )
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [group?.is_member])
+
+  useEffect(() => {
+    if (shouldAutoScrollRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [messages])
+
+  useEffect(() => {
+    if (!group?.is_member || messages.length === 0) return
+    axios.post(`/api/community/groups/${groupId}/messages/read`).catch(() => {})
+  }, [messages.length, group?.is_member, groupId])
 
   useEffect(() => {
     return () => {
@@ -193,6 +232,7 @@ export default function GroupDetailPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setMessages(prev => [...prev, res.data])
+      shouldAutoScrollRef.current = true
       setInput('')
       clearPendingFile()
     } catch (err) {
@@ -260,18 +300,6 @@ export default function GroupDetailPage() {
 
   const stopRecording = () => mediaRecorderRef.current?.stop()
 
-  const cancelRecording = () => {
-    if (mediaRecorderRef.current) {
-      mediaRecorderRef.current.onstop = () => {
-        mediaRecorderRef.current.stream?.getTracks?.().forEach(t => t.stop())
-      }
-      mediaRecorderRef.current.stop()
-    }
-    clearInterval(recordTimerRef.current)
-    setRecording(false)
-    setRecordSeconds(0)
-  }
-
   const sendVoiceNote = async (blob) => {
     setSending(true)
     try {
@@ -282,7 +310,7 @@ export default function GroupDetailPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setMessages(prev => [...prev, res.data])
-    } catch {
+      shouldAutoScrollRef.current = true
       toast.error('Voice note failed to send')
     } finally {
       setSending(false)
@@ -303,6 +331,37 @@ export default function GroupDetailPage() {
       }
     } finally {
       setFriendSending(s => ({ ...s, [member.id]: false }))
+    }
+  }
+
+  const isAdmin = useMemo(() => members.find(m => m.is_self)?.role === 'admin', [members])
+  const canManage = group?.is_owner || isAdmin
+
+  const clearChat = async () => {
+    setClearing(true)
+    try {
+      await axios.delete(`/api/community/groups/${groupId}/messages`)
+      setMessages([])
+      toast.success('Chat cleared')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not clear chat')
+    } finally {
+      setClearing(false)
+      setShowClearConfirm(false)
+      setShowOptions(false)
+    }
+  }
+
+  const promoteToAdmin = async (member) => {
+    setPromoting(s => ({ ...s, [member.id]: true }))
+    try {
+      await axios.post(`/api/community/groups/${groupId}/members/${member.id}/promote`)
+      setMembers(ms => ms.map(m => (m.id === member.id ? { ...m, role: 'admin' } : m)))
+      toast.success(`${member.username} is now an admin`)
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not promote member')
+    } finally {
+      setPromoting(s => ({ ...s, [member.id]: false }))
     }
   }
 
@@ -447,7 +506,7 @@ export default function GroupDetailPage() {
               <ArrowLeft size={16} />
             </button>
 
-            {group.is_owner && (
+            {canManage && (
               <>
                 <input ref={coverInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleCoverChange} className="hidden" />
                 <button
@@ -474,15 +533,39 @@ export default function GroupDetailPage() {
                 </div>
               </div>
 
-              <div className="flex-shrink-0 pb-0.5">
-                {group.is_owner ? (
+              <div className="flex-shrink-0 pb-0.5 flex items-center gap-2">
+                {canManage && (
                   <button onClick={openAddMembers} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg">
                     <UserPlus size={14} /> Invite
                   </button>
-                ) : group.is_member ? (
-                  <button onClick={handleLeave} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-rose-300 text-xs sm:text-sm font-bold hover:bg-rose-500/20">
-                    <LogOut size={14} /> Leave
-                  </button>
+                )}
+                {group.is_member ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowOptions(s => !s)}
+                      className="w-9 h-9 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-white flex items-center justify-center hover:bg-black/60"
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                    {showOptions && (
+                      <>
+                        <div className="fixed inset-0 z-20" onClick={() => setShowOptions(false)} />
+                        <div className="absolute right-0 top-full mt-2 w-44 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-30">
+                          {canManage && (
+                            <button
+                              onClick={() => { setShowOptions(false); setShowClearConfirm(true) }}
+                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-300 hover:bg-slate-800 text-left"
+                            >
+                              <Eraser size={14} /> Clear Chat
+                            </button>
+                          )}
+                          <button onClick={handleLeave} className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-rose-400 hover:bg-slate-800 text-left">
+                            <LogOut size={14} /> Leave Group
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 ) : group.has_pending_request ? (
                   <button onClick={handleCancelRequest} disabled={joining} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-slate-300 text-xs sm:text-sm font-bold disabled:opacity-50">
                     <Clock size={14} /> <span>Cancel</span><span className="hidden sm:inline">&nbsp;Request</span>
@@ -558,7 +641,14 @@ export default function GroupDetailPage() {
                       </div>
                     )}
 
-                    <span className="text-xs text-slate-500">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="flex items-center gap-1 text-xs text-slate-500">
+                      {formatMsgTime(msg.created_at)}
+                      {self && (
+                        msg.seen_by?.length > 0
+                          ? <CheckCheck size={13} className="text-sky-400" />
+                          : <Check size={13} className="text-slate-500" />
+                      )}
+                    </span>
                   </div>
                 </div>
               )
@@ -605,43 +695,45 @@ export default function GroupDetailPage() {
                 </div>
               )}
 
-              {recording ? (
-                <div className="flex items-center gap-3 bg-slate-900 border border-rose-500/40 rounded-2xl px-4 py-2.5">
+              {recording && (
+                <button
+                  onClick={stopRecording}
+                  title="Tap to stop and send"
+                  className="absolute -top-14 right-3 sm:right-5 flex items-center gap-2.5 bg-rose-600 hover:bg-rose-500 text-white pl-3 pr-4 py-2 rounded-full shadow-xl shadow-rose-950/40 animate-fade-in z-20"
+                >
                   <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white" />
                   </span>
-                  <span className="text-sm text-white font-semibold flex-1">
-                    Recording… {String(Math.floor(recordSeconds / 60)).padStart(2, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
+                  <span className="text-xs font-bold tabular-nums">
+                    {String(Math.floor(recordSeconds / 60)).padStart(2, '0')}:{String(recordSeconds % 60).padStart(2, '0')}
                   </span>
-                  <button onClick={cancelRecording} className="text-slate-400 hover:text-white text-xs font-semibold px-2">Cancel</button>
-                  <button onClick={stopRecording} className="w-9 h-9 rounded-xl flex items-center justify-center text-white bg-rose-600 hover:bg-rose-500 flex-shrink-0">
-                    <Square size={14} />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-1 sm:gap-2 items-center bg-slate-900 border border-slate-800 rounded-2xl px-2 sm:px-3 py-2">
-                  <input ref={attachInputRef} type="file" onChange={handleAttachChange} className="hidden" />
-                  <button onClick={handleAttachPick} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1"><Paperclip size={16} /></button>
-                  <textarea
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={`Message ${group.name}...`}
-                    rows={1}
-                    className="flex-1 min-w-0 bg-transparent text-white placeholder-slate-500 text-sm resize-none outline-none py-1"
-                  />
-                  <button onClick={() => setShowEmoji(s => !s)} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1"><Smile size={16} /></button>
-                  <button onClick={startRecording} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1"><Mic size={16} /></button>
-                  <button
-                    onClick={sendMsg}
-                    disabled={(!input.trim() && !pendingFile) || sending}
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white bg-gradient-to-br from-violet-600 to-purple-500 disabled:opacity-40 flex-shrink-0"
-                  >
-                    {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                  </button>
-                </div>
+                  <Mic size={14} />
+                </button>
               )}
+
+              <div className="flex gap-1 sm:gap-2 items-center bg-slate-900 border border-slate-800 rounded-2xl px-2 sm:px-3 py-2">
+                <input ref={attachInputRef} type="file" onChange={handleAttachChange} className="hidden" />
+                <button onClick={handleAttachPick} disabled={recording} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1 disabled:opacity-40"><Paperclip size={16} /></button>
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={recording}
+                  placeholder={recording ? 'Recording voice note…' : `Message ${group.name}...`}
+                  rows={1}
+                  className="flex-1 min-w-0 bg-transparent text-white placeholder-slate-500 text-sm resize-none outline-none py-1 disabled:opacity-40"
+                />
+                <button onClick={() => setShowEmoji(s => !s)} disabled={recording} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1 disabled:opacity-40"><Smile size={16} /></button>
+                <button onClick={startRecording} disabled={recording} className={`flex-shrink-0 p-1 ${recording ? 'text-rose-400' : 'text-slate-500 hover:text-slate-300'}`}><Mic size={16} /></button>
+                <button
+                  onClick={sendMsg}
+                  disabled={recording || (!input.trim() && !pendingFile) || sending}
+                  className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center text-white bg-gradient-to-br from-violet-600 to-purple-500 disabled:opacity-40 flex-shrink-0"
+                >
+                  {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -649,7 +741,7 @@ export default function GroupDetailPage() {
         {/* sidebar */}
         <div className="w-full lg:w-72 flex-shrink-0 flex flex-col gap-4">
 
-          {group.is_owner && requests.length > 0 && (
+          {canManage && requests.length > 0 && (
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1">
                 <Bell size={12} /> Join Requests ({requests.length})
@@ -697,7 +789,18 @@ export default function GroupDetailPage() {
                       <Circle size={8} className={`absolute -bottom-0.5 -right-0.5 fill-current ${m.online ? 'text-emerald-400' : 'text-slate-600'}`} />
                     </div>
                     <span className="text-sm text-slate-300 truncate flex-1">{m.username}</span>
-                    {m.role === 'owner' && <ShieldCheck size={12} className="text-amber-400 flex-shrink-0" />}
+                    {m.role === 'owner' && <ShieldCheck size={12} className="text-amber-400 flex-shrink-0" title="Owner" />}
+                    {m.role === 'admin' && <ShieldAlert size={12} className="text-sky-400 flex-shrink-0" title="Admin" />}
+                    {canManage && !m.is_self && m.role !== 'owner' && m.role !== 'admin' && (
+                      <button
+                        onClick={() => promoteToAdmin(m)}
+                        disabled={promoting[m.id]}
+                        title="Make admin"
+                        className="w-6 h-6 rounded-md bg-sky-600/15 text-sky-400 hover:bg-sky-600/25 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
+                      >
+                        {promoting[m.id] ? <Loader2 size={11} className="animate-spin" /> : <ShieldAlert size={11} />}
+                      </button>
+                    )}
                     {!m.is_self && !m.is_friend && (
                       <button
                         onClick={() => !sent && sendFriendRequest(m)}
@@ -739,7 +842,7 @@ export default function GroupDetailPage() {
             ) : (
               <div className="grid grid-cols-3 gap-2">
                 {media.slice(0, 6).map(m => {
-                  const canDelete = group.is_owner || m.uploaded_by?.id === user?.id
+                  const canDelete = canManage || m.uploaded_by?.id === user?.id
                   const deleting = mediaDeleting[m.id]
                   return (
                     <div key={m.id} className="relative group/media aspect-square rounded-lg overflow-hidden bg-slate-800">
@@ -770,6 +873,29 @@ export default function GroupDetailPage() {
           )}
         </div>
       </div>
+
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowClearConfirm(false)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+            <h2 className="font-display font-bold text-white text-lg">Clear all messages?</h2>
+            <p className="text-sm text-slate-400">
+              This permanently deletes every message in {group.name} for all members, to help free up space. This can't be undone.
+            </p>
+            <div className="flex gap-2 justify-end mt-1">
+              <button onClick={() => setShowClearConfirm(false)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-800">
+                Cancel
+              </button>
+              <button
+                onClick={clearChat}
+                disabled={clearing}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold disabled:opacity-50"
+              >
+                {clearing ? <Loader2 size={14} className="animate-spin" /> : <Eraser size={14} />} Clear Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setAddOpen(false)}>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { Search, Plus, Users, Circle, X, Clock, ShieldCheck, Loader2, Globe2 } from 'lucide-react'
+import { Search, Plus, Users, Circle, X, Clock, ShieldCheck, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 const TIER_STYLES = {
@@ -121,11 +121,11 @@ export default function CommunityPage() {
   }
 
   return (
-    <div className="p-6 md:p-8 animate-fade-in">
+    <div className="max-w-6xl mx-auto p-6 md:p-8 animate-fade-in">
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-7">
         <div>
-          <h1 className="font-display font-extrabold text-3xl text-violet-400">Find Your Squad</h1>
-          <p className="text-slate-400 text-sm mt-2 max-w-xl">
+          <h1 className="font-semibold text-2xl text-violet-400">Find Your Squad</h1>
+          <p className="text-slate-400 text-sm mt-1.5 max-w-lg">
             Connect with millions of gamers across the globe. Join specialized groups, participate in tournaments, and dominate the leaderboard.
           </p>
         </div>
