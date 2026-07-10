@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { useLibrary } from '../context/LibraryContext'
+import { awardXP } from '../utils/xpService'
 import toast from 'react-hot-toast'
 
 const RAWG_KEY = 'cf38811b97cf43bbb8d88c606ed4e73c'
@@ -390,8 +391,12 @@ export default function ExplorePage() {
       return
     }
     const added = await addToLibrary(toLibraryPayload(game))
-    if (added) toast.success(`Added ${game.name} to library`)
-    else toast.error(`Couldn't add ${game.name} — check console for details`)
+    if (added) {
+      toast.success(`Added ${game.name} to library`)
+      awardXP('added_game', game.name)
+    } else {
+      toast.error(`Couldn't add ${game.name} — check console for details`)
+    }
   }, [isInLibrary, addToLibrary, removeFromLibrary])
 
   const searchTimer = useRef(null)
