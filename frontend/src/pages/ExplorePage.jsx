@@ -33,19 +33,21 @@ const ACCENT_COLORS = [
   '#3b82f6','#ef4444','#ec4899','#14b8a6','#f97316',
 ]
 
-// Maps a RAWG game object (list item or full detail) to the shape
-// LibraryContext.addToLibrary expects. List items lack description_raw,
-// developers, and publishers — those just fall back to empty strings.
+// Backend column caps: title 200, genre/platform 50, developer/publisher 100.
+// RAWG can return long joined lists (many platforms/genres) that blow past
+// these — truncate so the insert never fails with a DB length error.
+const clip = (str, max) => (str.length > max ? str.slice(0, max - 1).trim() + '…' : str)
+
 function toLibraryPayload(game) {
   return {
-    title:        game.name,
+    title:        clip(game.name || '', 200),
     slug:         game.slug,
     description:  game.description_raw || '',
-    genre:        game.genres?.map(g => g.name).join(', ') || '',
-    platform:     game.platforms?.map(p => p.platform.name).join(', ') || '',
+    genre:        clip(game.genres?.map(g => g.name).join(', ') || '', 50),
+    platform:     clip(game.platforms?.map(p => p.platform.name).join(', ') || '', 50),
     release_year: game.released ? parseInt(game.released.slice(0, 4), 10) : null,
-    developer:    game.developers?.map(d => d.name).join(', ') || '',
-    publisher:    game.publishers?.map(p => p.name).join(', ') || '',
+    developer:    clip(game.developers?.map(d => d.name).join(', ') || '', 100),
+    publisher:    clip(game.publishers?.map(p => p.name).join(', ') || '', 100),
     rating:       game.rating || 0,
     cover:        game.background_image || '',
   }
@@ -56,7 +58,7 @@ function GameDetailModal({ gameId, onClose, isInLibrary, onToggleLibrary }) {
   const [details, setDetails] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState(false)
-  const inLibrary = details ? isInLibrary(details.slug) : false
+  const inLibrary = details ? isInLibrary(details) : false
 
   useEffect(() => {
     let cancelled = false
@@ -245,7 +247,7 @@ function GameDetailModal({ gameId, onClose, isInLibrary, onToggleLibrary }) {
                   : { background: '#a855f7', color: '#fff', boxShadow: '0 4px 14px rgba(168,85,247,0.4)' }
                 }
               >
-                {inLibrary ? <><Check size={15} /> In Your Library</> : <><Plus size={15} /> Add to Library</>}
+                {inLibrary ? <><Check size={15} /> Added to Library</> : <><Plus size={15} /> Add to Library</>}
               </button>
             </div>
           </>
@@ -301,7 +303,7 @@ function GameCard({ game, accentColor, onOpenDetail, inLibrary, onToggleLibrary,
               : { background: 'rgba(255,255,255,0.15)', color: '#fff', backdropFilter: 'blur(4px)' }
             }
           >
-            {inLibrary ? <><Check size={10} /> In Library</> : <><Plus size={10} /> Add to Library</>}
+            {inLibrary ? <><Check size={10} /> Added to Library</> : <><Plus size={10} /> Add to Library</>}
           </button>
         </div>
 
@@ -347,11 +349,10 @@ function GameCard({ game, accentColor, onOpenDetail, inLibrary, onToggleLibrary,
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
-export default function DiscoverPage() {
+export default function ExplorePage() {
   const { dark: isDark } = useTheme()
   const accent = '#a855f7'
 
-  // Filter state
   const [genre, setGenre]       = useState('All')
   const [platform, setPlatform] = useState('All')
   const [year, setYear]         = useState('All')
@@ -361,7 +362,6 @@ export default function DiscoverPage() {
   const [searchInput, setSearchInput] = useState('')
   const [showFilters, setShowFilters] = useState(false)
 
-  // Data state
   const [games, setGames]       = useState([])
   const [loading, setLoading]   = useState(true)
   const [page, setPage]         = useState(1)
@@ -371,26 +371,29 @@ export default function DiscoverPage() {
   const PAGE_SIZE  = 20
   const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
-  // Library — backed by the real API via LibraryContext
+  const shuffleGames = useCallback(() => {
+    setGames(prev => {
+      const shuffled = [...prev]
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+      }
+      return shuffled
+    })
+  }, [])
+
   const { isInLibrary, addToLibrary, removeFromLibrary } = useLibrary()
   const toggleLibrary = useCallback(async (game) => {
-    if (isInLibrary(game.slug)) {
+    if (isInLibrary(game)) {
       await removeFromLibrary(game.slug)
       toast.success(`Removed ${game.name} from library`)
       return
     }
     const added = await addToLibrary(toLibraryPayload(game))
-    if (added) {
-      toast.success(`Added ${game.name} to library`)
-    } else {
-      // addToLibrary swallows real errors internally and just returns false —
-      // could mean "already in library" OR a failed request. Check devtools
-      // console for a "Failed to add to library" log to tell which one.
-      toast.error(`Couldn't add ${game.name} — check console for details`)
-    }
+    if (added) toast.success(`Added ${game.name} to library`)
+    else toast.error(`Couldn't add ${game.name} — check console for details`)
   }, [isInLibrary, addToLibrary, removeFromLibrary])
 
-  // Search debounce
   const searchTimer = useRef(null)
   const handleSearchInput = val => {
     setSearchInput(val)
@@ -398,7 +401,6 @@ export default function DiscoverPage() {
     searchTimer.current = setTimeout(() => { setSearch(val); setPage(1) }, 500)
   }
 
-  // Build RAWG URL
   const buildUrl = useCallback(() => {
     const params = new URLSearchParams({ key: RAWG_KEY, page_size: PAGE_SIZE, page, ordering: sortBy })
     if (search)             params.set('search', search)
@@ -427,24 +429,10 @@ export default function DiscoverPage() {
   useEffect(() => { setPage(1) }, [genre, platform, year, rating, sortBy, search])
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'smooth' }) }, [page])
 
-  // Shuffle the front page every 5 minutes — only when someone's looking at
-  // the plain default view (no search/filters, default sort, page 1), so we
-  // don't shuffle results out from under someone mid-search or mid-browse.
-  const isDefaultView = !search && genre === 'All' && platform === 'All' && year === 'All' && rating === 'All' && sortBy === '-added' && page === 1
   useEffect(() => {
-    if (!isDefaultView) return
-    const id = setInterval(() => {
-      setGames(prev => {
-        const shuffled = [...prev]
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1))
-          ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-        }
-        return shuffled
-      })
-    }, 5 * 60 * 1000)
+    const id = setInterval(shuffleGames, 5 * 60 * 1000)
     return () => clearInterval(id)
-  }, [isDefaultView])
+  }, [shuffleGames])
 
   const activeFilters = [
     genre    !== 'All' && { label: genre,        clear: () => setGenre('All')    },
@@ -458,7 +446,6 @@ export default function DiscoverPage() {
     setSearch(''); setSearchInput(''); setSortBy('-added'); setPage(1)
   }
 
-  // Theme tokens
   const pageBg      = isDark ? '#0b0f19' : '#f6f8fc'
   const surfaceBg   = isDark ? 'rgba(18,24,40,0.90)' : 'rgba(255,255,255,0.90)'
   const cardBg      = isDark ? 'rgba(20,27,44,0.96)' : 'rgba(255,255,255,0.97)'
@@ -473,7 +460,6 @@ export default function DiscoverPage() {
   const textSub     = isDark ? '#8892a4' : '#64748b'
   const divider     = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
 
-  // FilterPill sub-component (inside render so it picks up theme vars)
   const FilterPill = ({ options, value, onChange, label }) => (
     <div className="flex flex-col gap-2">
       <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: accent }}>{label}</span>
@@ -537,8 +523,8 @@ export default function DiscoverPage() {
           style={{ background: surfaceBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow, backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)' }}
         >
           <div className="min-w-0">
-            <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: accent }}>RAWG Database</p>
-            <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>Discover Games</h1>
+            <p className="text-[10px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: accent }}>Void Database</p>
+            <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-none" style={{ color: textPrimary }}>Explore Games</h1>
             <p className="text-xs sm:text-sm mt-2" style={{ color: textSub }}>
               Explore 500,000+ games
               {!loading && totalCount > 0 && (
@@ -693,7 +679,7 @@ export default function DiscoverPage() {
                 game={game}
                 accentColor={ACCENT_COLORS[i % ACCENT_COLORS.length]}
                 onOpenDetail={setDetailGameId}
-                inLibrary={isInLibrary(game.slug)}
+                inLibrary={isInLibrary(game)}
                 onToggleLibrary={toggleLibrary}
                 cardBg={cardBg}
                 cardBorder={cardBorder}

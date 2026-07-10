@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
+from sqlalchemy.exc import DataError, IntegrityError
 from typing import Optional, List
 from db.database import get_db
 from models.models import Game, User
@@ -83,7 +84,11 @@ def create_game(
 
     game = Game(**payload.model_dump())
     db.add(game)
-    db.commit()
+    try:
+        db.commit()
+    except (DataError, IntegrityError) as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Could not save game: {str(e.orig)}")
     db.refresh(game)
     return game
 

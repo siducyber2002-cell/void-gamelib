@@ -58,10 +58,19 @@ export function LibraryProvider({ children }) {
     fetchLibrary()
   }, [user?.id, fetchLibrary])
 
-  const isInLibrary = useCallback((slugOrId) => {
-    if (!slugOrId) return false
-    return libraryRef.current.some(
-      g => g.slug === slugOrId || g.rawgId === slugOrId || g.gameId === slugOrId
+  const isInLibrary = useCallback((game) => {
+    if (!game) return false
+    // Accept either a raw slug/id string (legacy callers) or a full game object
+    if (typeof game === 'string' || typeof game === 'number') {
+      return libraryRef.current.some(
+        g => g.slug === game || g.rawgId === game || g.gameId === game
+      )
+    }
+    const title = (game.title || game.name || '').toLowerCase()
+    return libraryRef.current.some(g =>
+      (game.slug && g.slug === game.slug) ||
+      (game.id && g.rawgId === game.id) ||
+      (title && g.title?.toLowerCase() === title)
     )
   }, [])
 
@@ -73,10 +82,7 @@ export function LibraryProvider({ children }) {
     if (pendingRef.current.has(key)) return false
 
     // Already in library — return false so callers know not to award XP
-    if (libraryRef.current.some(g =>
-      (gameData.slug && g.slug === gameData.slug) ||
-      (gameData.rawgId && g.rawgId === gameData.rawgId)
-    )) return false
+    if (isInLibrary(gameData)) return false
 
     pendingRef.current.add(key)
     try {
@@ -145,7 +151,7 @@ export function LibraryProvider({ children }) {
       // Sync with server in background
       fetchLibrary()
     }
-  }, [fetchLibrary])
+  }, [fetchLibrary, isInLibrary])
 
   const removeFromLibrary = useCallback(async (slugOrId) => {
     if (!slugOrId) return
