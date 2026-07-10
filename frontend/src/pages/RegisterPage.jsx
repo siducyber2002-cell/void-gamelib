@@ -2,238 +2,45 @@ import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
-import { Eye, EyeOff, ChevronRight, BookOpen } from 'lucide-react'
+import {
+  Eye, EyeOff, ChevronRight,
+  Gamepad2, Trophy, Zap,
+  User, Mail, Lock, Rocket,
+} from 'lucide-react'
 
 export default function RegisterPage() {
   const { register } = useAuth()
   const navigate = useNavigate()
-  const [form, setForm] = useState({ username: '', email: '', password: '', confirm_password: '' })
+  const [form, setForm] = useState({
+    username: '', email: '', password: '', confirm_password: '',
+  })
+  const [agreeTerms, setAgreeTerms] = useState(false)
   const [showPw, setShowPw] = useState(false)
   const [showConfirmPw, setShowConfirmPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
-  const [glitchText, setGlitchText] = useState('Join The Void')
-  // Theme is locked to the dark VOID look — no light-mode toggle.
+  const [overlayText, setOverlayText] = useState('WELCOME TO VOID')
+  const [videoLoaded, setVideoLoaded] = useState(false)
+  const YT_VIDEO_ID = 'f3st1DfrvIc'
   const darkMode = true
-  const canvasRef = useRef(null)
-  const animFrameRef = useRef(null)
 
-  const taglines = [
-    'Join The Void',
-    'J01n Th3 V01d',
-    'JΞIN THΞ VOID',
-    'Join The Void',
-    'J0in_The_V0id',
-    'Join The Void',
+  const overlayVariants = [
+    'WELCOME TO VOID',
+    'W3LC0ME T0 V01D',
+    'WΞLCOMΞ TO VOID',
+    'WELCOME TO VOID',
+    'W3LC0ME_T0_V01D',
+    'WELCOME TO VOID',
   ]
 
   useEffect(() => {
     let idx = 0
     const interval = setInterval(() => {
-      idx = (idx + 1) % taglines.length
-      setGlitchText(taglines[idx])
-    }, 900)
+      idx = (idx + 1) % overlayVariants.length
+      setOverlayText(overlayVariants[idx])
+    }, 1400)
     return () => clearInterval(interval)
   }, [])
-
-  // Canvas star + black hole animation (identical to LoginPage)
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d', { alpha: false })
-
-    let W = canvas.width = window.innerWidth
-    let H = canvas.height = window.innerHeight
-
-    const onResize = () => {
-      W = canvas.width = window.innerWidth
-      H = canvas.height = window.innerHeight
-    }
-    window.addEventListener('resize', onResize)
-
-    const NUM_STARS = 220
-    const stars = Array.from({ length: NUM_STARS }, () => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      r: Math.random() * 1.4 + 0.2,
-      alpha: Math.random(),
-      speed: Math.random() * 0.003 + 0.001,
-      twinkleOffset: Math.random() * Math.PI * 2,
-    }))
-
-    const NUM_SPIRAL = 180
-    const spiralParticles = Array.from({ length: NUM_SPIRAL }, (_, i) => ({
-      angle: (i / NUM_SPIRAL) * Math.PI * 2,
-      radius: 120 + Math.random() * 220,
-      speed: (Math.random() * 0.003 + 0.002) * (Math.random() > 0.5 ? 1 : -1),
-      size: Math.random() * 2 + 0.5,
-      alpha: Math.random() * 0.7 + 0.2,
-      arm: Math.floor(Math.random() * 3),
-    }))
-
-    let t = 0
-
-    const ring_color = (arm) => {
-      if (arm === 0) return '147,51,234'
-      if (arm === 1) return '168,85,247'
-      return '192,132,252'
-    }
-
-    const draw = () => {
-      t += 0.012
-      ctx.clearRect(0, 0, W, H)
-
-      ctx.fillStyle = darkMode ? '#050507' : '#f0ecff'
-      ctx.fillRect(0, 0, W, H)
-
-      const cx = W * 0.32
-      const cy = H * 0.5
-
-      stars.forEach(s => {
-        s.twinkleOffset += s.speed
-        const alpha = (Math.sin(s.twinkleOffset) * 0.5 + 0.5) * (darkMode ? 0.9 : 0.3)
-        ctx.beginPath()
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(${darkMode ? '200,180,255' : '100,60,180'},${alpha})`
-        ctx.fill()
-      })
-
-      for (let ring = 6; ring >= 0; ring--) {
-        const rInner = 90 + ring * 45
-        const rOuter = rInner + 38
-        const gradient = ctx.createRadialGradient(cx, cy, rInner, cx, cy, rOuter)
-        const intensities = [0.55, 0.45, 0.35, 0.28, 0.2, 0.13, 0.07]
-        const intensity = intensities[ring] * (darkMode ? 1 : 0.7)
-        gradient.addColorStop(0, `rgba(147,51,234,${intensity})`)
-        gradient.addColorStop(0.4, `rgba(109,40,217,${intensity * 0.6})`)
-        gradient.addColorStop(1, `rgba(76,29,149,0)`)
-        ctx.beginPath()
-        ctx.arc(cx, cy, rOuter, 0, Math.PI * 2)
-        ctx.fillStyle = gradient
-        ctx.fill()
-      }
-
-      spiralParticles.forEach(p => {
-        p.angle += p.speed
-        const armOffset = (p.arm / 3) * Math.PI * 2
-        const wobble = Math.sin(p.angle * 2 + t) * 18
-        const r = p.radius + wobble
-        const spiral = p.angle * 0.35 + armOffset
-        const px = cx + Math.cos(spiral) * r
-        const py = cy + Math.sin(spiral) * r * 0.42
-
-        const distFromCenter = Math.sqrt((px - cx) ** 2 + (py - cy) ** 2)
-        const fade = Math.max(0, 1 - distFromCenter / 400)
-
-        ctx.beginPath()
-        ctx.arc(px, py, p.size, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(${ring_color(p.arm)},${p.alpha * fade * (darkMode ? 1 : 0.8)})`
-        ctx.fill()
-      })
-
-      const orbitals = [
-        { a: 210, b: 58,  tilt: -28,  speed: 0.38,  color: '192,132,252', trailColor: '168,85,247',  phaseOffset: 0 },
-        { a: 190, b: 52,  tilt:  52,  speed: -0.28, color: '147,51,234',  trailColor: '109,40,217',  phaseOffset: 2.1 },
-        { a: 230, b: 46,  tilt:  90,  speed: 0.22,  color: '216,180,254', trailColor: '192,132,252', phaseOffset: 4.2 },
-      ]
-
-      orbitals.forEach(orb => {
-        const angle = t * orb.speed + orb.phaseOffset
-        const tiltRad = (orb.tilt * Math.PI) / 180
-
-        ctx.save()
-        ctx.translate(cx, cy)
-        ctx.rotate(tiltRad)
-        ctx.beginPath()
-        ctx.ellipse(0, 0, orb.a, orb.b, 0, 0, Math.PI * 2)
-        ctx.strokeStyle = `rgba(${orb.color},${darkMode ? 0.13 : 0.09})`
-        ctx.lineWidth = 1
-        ctx.stroke()
-        ctx.restore()
-
-        const trailSteps = 28
-        for (let s = 0; s < trailSteps; s++) {
-          const trailAngle = angle - (s * 0.045)
-          const tx2 = Math.cos(trailAngle) * orb.a
-          const ty2 = Math.sin(trailAngle) * orb.b
-          const rotX = tx2 * Math.cos(tiltRad) - ty2 * Math.sin(tiltRad)
-          const rotY = tx2 * Math.sin(tiltRad) + ty2 * Math.cos(tiltRad)
-          const trailAlpha = ((trailSteps - s) / trailSteps) * 0.55 * (darkMode ? 1 : 0.7)
-          const trailSize = 2.5 * ((trailSteps - s) / trailSteps)
-          ctx.beginPath()
-          ctx.arc(cx + rotX, cy + rotY, trailSize, 0, Math.PI * 2)
-          ctx.fillStyle = `rgba(${orb.trailColor},${trailAlpha})`
-          ctx.fill()
-        }
-
-        const px2 = Math.cos(angle) * orb.a
-        const py2 = Math.sin(angle) * orb.b
-        const rotPx = px2 * Math.cos(tiltRad) - py2 * Math.sin(tiltRad)
-        const rotPy = px2 * Math.sin(tiltRad) + py2 * Math.cos(tiltRad)
-
-        const pGlow = ctx.createRadialGradient(cx + rotPx, cy + rotPy, 0, cx + rotPx, cy + rotPy, 14)
-        pGlow.addColorStop(0, `rgba(${orb.color},0.6)`)
-        pGlow.addColorStop(1, `rgba(${orb.color},0)`)
-        ctx.beginPath()
-        ctx.arc(cx + rotPx, cy + rotPy, 14, 0, Math.PI * 2)
-        ctx.fillStyle = pGlow
-        ctx.fill()
-
-        ctx.beginPath()
-        ctx.arc(cx + rotPx, cy + rotPy, 3.5, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(${orb.color},${0.85 + Math.sin(t * 3 + orb.phaseOffset) * 0.15})`
-        ctx.fill()
-
-        ctx.beginPath()
-        ctx.arc(cx + rotPx, cy + rotPy, 1.5, 0, Math.PI * 2)
-        ctx.fillStyle = `rgba(255,255,255,0.9)`
-        ctx.fill()
-      })
-
-      const ringGlow = ctx.createRadialGradient(cx, cy, 82, cx, cy, 100)
-      ringGlow.addColorStop(0, `rgba(147,51,234,0)`)
-      ringGlow.addColorStop(0.5, `rgba(168,85,247,${0.55 + Math.sin(t * 1.2) * 0.15})`)
-      ringGlow.addColorStop(1, `rgba(147,51,234,0)`)
-      ctx.beginPath()
-      ctx.arc(cx, cy, 100, 0, Math.PI * 2)
-      ctx.fillStyle = ringGlow
-      ctx.fill()
-
-      const halo = ctx.createRadialGradient(cx, cy, 95, cx, cy, 320)
-      halo.addColorStop(0, `rgba(124,58,237,${0.22 + Math.sin(t * 0.8) * 0.06})`)
-      halo.addColorStop(0.4, `rgba(109,40,217,0.1)`)
-      halo.addColorStop(1, 'rgba(76,29,149,0)')
-      ctx.beginPath()
-      ctx.arc(cx, cy, 320, 0, Math.PI * 2)
-      ctx.fillStyle = halo
-      ctx.fill()
-
-      const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 88)
-      core.addColorStop(0, darkMode ? '#000000' : '#1a0040')
-      core.addColorStop(0.85, darkMode ? '#020004' : '#0d0030')
-      core.addColorStop(1, 'rgba(5,0,10,0)')
-      ctx.beginPath()
-      ctx.arc(cx, cy, 88, 0, Math.PI * 2)
-      ctx.fillStyle = core
-      ctx.fill()
-
-      ctx.beginPath()
-      ctx.arc(cx, cy, 90, 0, Math.PI * 2)
-      ctx.strokeStyle = `rgba(192,132,252,${0.5 + Math.sin(t * 1.5) * 0.2})`
-      ctx.lineWidth = 1.5
-      ctx.stroke()
-
-
-
-      animFrameRef.current = requestAnimationFrame(draw)
-    }
-
-    draw()
-    return () => {
-      cancelAnimationFrame(animFrameRef.current)
-      window.removeEventListener('resize', onResize)
-    }
-  }, [darkMode])
 
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
 
@@ -242,9 +49,16 @@ export default function RegisterPage() {
     if (form.password !== form.confirm_password) {
       return toast.error("Passwords don't match!")
     }
+    if (!agreeTerms) {
+      return toast.error('Please agree to the Terms of Service and Privacy Policy')
+    }
     setLoading(true)
     try {
-      await register({ username: form.username, email: form.email, password: form.password })
+      await register({
+        username: form.username,
+        email: form.email,
+        password: form.password,
+      })
       toast.success('Welcome to the Void 🌀')
       navigate('/login')
     } catch (err) {
@@ -270,9 +84,8 @@ export default function RegisterPage() {
   const strengthColors = ['', '#f43f5e', '#f59e0b', '#a855f7', '#7c3aed']
   const strengthColor = strengthColors[strength]
 
-  const lm = !darkMode // always false — dark theme only
+  const lm = !darkMode
 
-  // Redirects into Google's OAuth consent screen; mirrors LoginPage's flow.
   const handleGoogleLogin = () => {
     setGoogleLoading(true)
     const apiBase = import.meta.env.VITE_API_URL || ''
@@ -283,38 +96,145 @@ export default function RegisterPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600&family=Share+Tech+Mono&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         .void-root {
           min-height: 100vh;
           display: flex;
-          overflow: hidden;
+          overflow-x: hidden;
+          overflow-y: auto;
           position: relative;
           font-family: 'Rajdhani', sans-serif;
           transition: background 0.4s;
         }
 
-        .void-canvas {
-          position: absolute;
+        .yt-bg-wrap {
+          position: fixed;
           inset: 0;
           z-index: 0;
+          overflow: hidden;
           pointer-events: none;
-          will-change: transform;
+          background: #000;
+        }
+        .yt-poster {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          background: linear-gradient(135deg, #1a0a2e 0%, #0d0518 50%, #1a0a2e 100%);
+          transition: opacity 0.6s ease;
+        }
+        .yt-bg-wrap iframe {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 100vw;
+          height: 56.25vw;
+          min-height: 100vh;
+          min-width: 177.78vh;
+          transform: translate(-50%, -50%);
+          border: none;
+          pointer-events: none;
+        }
+        @supports (height: 100dvh) {
+          .void-root { min-height: 100dvh; }
+          .yt-bg-wrap iframe { min-height: 100dvh; min-width: 177.78dvh; }
+        }
+        @media (max-height: 560px) and (orientation: landscape) {
+          .void-root { overflow-y: auto; overflow-x: hidden; }
         }
 
-        /* ── LEFT PANEL ── */
+        .yt-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1;
+          pointer-events: none;
+          background: linear-gradient(
+            135deg,
+            rgba(5, 0, 18, 0.55) 0%,
+            rgba(0, 0, 0, 0.48) 50%,
+            rgba(8, 2, 20, 0.55) 100%
+          );
+        }
+        .yt-overlay::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(
+            ellipse at center,
+            transparent 30%,
+            rgba(0, 0, 0, 0.35) 80%,
+            rgba(0, 0, 0, 0.65) 100%
+          );
+        }
+
+        .welcome-glitch {
+          position: fixed;
+          inset: 0;
+          z-index: 1;
+          overflow: hidden;
+          pointer-events: none;
+          display: flex;
+          align-items: center;
+        }
+        .glitch-row {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          animation: marqueeSwing 10s ease-in-out infinite alternate;
+          will-change: transform;
+        }
+        .marquee-track {
+          display: inline-block;
+          white-space: nowrap;
+          font-family: 'Orbitron', sans-serif;
+          font-weight: 900;
+          font-size: clamp(3.4rem, 11.5vw, 11rem);
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+        .row-base .marquee-track { color: rgba(226,217,243,0.055); }
+        .row-r .marquee-track {
+          color: rgba(236,72,153,0.09);
+          animation: glitchShiftR 4.6s steps(1) infinite;
+        }
+        .row-c .marquee-track {
+          color: rgba(56,189,248,0.09);
+          animation: glitchShiftC 4.6s steps(1) infinite;
+        }
+        @keyframes marqueeSwing {
+          from { transform: translateX(-32%); }
+          to   { transform: translateX(14%); }
+        }
+        @keyframes glitchShiftR {
+          0%, 91%, 100% { transform: translate(0,0); clip-path: inset(0 0 0 0); opacity: 0; }
+          92% { transform: translate(-7px, 3px); clip-path: inset(8% 0 46% 0); opacity: 1; }
+          93% { transform: translate(5px, -2px); clip-path: inset(58% 0 4% 0); opacity: 1; }
+          94% { transform: translate(-4px, 1px); clip-path: inset(22% 0 52% 0); opacity: 1; }
+          95%, 100% { opacity: 0; }
+        }
+        @keyframes glitchShiftC {
+          0%, 90%, 100% { transform: translate(0,0); clip-path: inset(0 0 0 0); opacity: 0; }
+          91% { transform: translate(7px, -3px); clip-path: inset(50% 0 12% 0); opacity: 1; }
+          92% { transform: translate(-5px, 2px); clip-path: inset(6% 0 62% 0); opacity: 1; }
+          93.5% { transform: translate(4px, -1px); clip-path: inset(34% 0 30% 0); opacity: 1; }
+          95%, 100% { opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .glitch-row, .row-r .marquee-track, .row-c .marquee-track { animation: none; }
+        }
+
         .left-panel {
           flex: 1;
           display: flex;
           flex-direction: column;
           padding: 2.5rem 3rem;
           position: relative;
-          z-index: 1;
+          z-index: 2;
         }
 
-        /* ── VOID LOGO ── */
         .void-logo-wrap {
           display: flex;
           align-items: center;
@@ -414,110 +334,114 @@ export default function RegisterPage() {
         }
         .wm-d { flex-shrink: 0; line-height: 1; }
 
-        /* ── LEFT TAGLINE ── */
-        .left-tagline {
+        .hero-block {
           margin-top: auto;
-          margin-bottom: 3.5rem;
+          margin-bottom: 2.2rem;
         }
-
-        .glitch-title {
+        .hero-heading {
+          display: flex;
+          flex-direction: column;
+          line-height: 0.95;
+        }
+        .hero-line1 {
           font-family: 'Orbitron', sans-serif;
-          font-size: clamp(1.8rem, 3.2vw, 3rem);
           font-weight: 900;
-          color: ${lm ? '#1a0040' : '#ffffff'};
-          letter-spacing: 0.06em;
-          line-height: 1.1;
-          text-transform: uppercase;
-          position: relative;
-          display: inline-block;
-          font-variant-numeric: tabular-nums;
-          text-shadow: ${lm ? 'none' : '0 0 30px rgba(168,85,247,0.4)'};
-          transition: color 0.3s;
+          font-size: clamp(2.6rem, 5vw, 4.4rem);
+          color: #f5f2ff;
+          letter-spacing: 0.02em;
+          text-shadow: 0 0 30px rgba(200,170,255,0.25);
         }
-
-        .glitch-sub {
-          font-family: 'Share Tech Mono', monospace;
-          font-size: clamp(0.75rem, 1.1vw, 0.92rem);
-          color: ${lm ? 'rgba(80,30,160,0.7)' : 'rgba(192,132,252,0.75)'};
-          margin-top: 1rem;
-          letter-spacing: 0.07em;
-          line-height: 1.8;
-          animation: textBlink 3.5s steps(1) infinite;
-        }
-
-        @keyframes textBlink {
-          0%, 94%, 100% { opacity: 1; }
-          95%, 97% { opacity: 0.3; }
-          96%, 98% { opacity: 1; }
-          99% { opacity: 0.5; }
-        }
-
-        .glitch-cursor {
-          display: inline-block;
-          width: 2px;
-          height: 1em;
-          background: #a855f7;
-          margin-left: 3px;
-          animation: cursorBlink 1.1s steps(1) infinite;
-          vertical-align: text-bottom;
-        }
-        @keyframes cursorBlink {
-          0%, 49% { opacity: 1; }
-          50%, 100% { opacity: 0; }
-        }
-
-        .explore-btn {
-          display: inline-flex;
-          align-items: center;
-          gap: 0.5rem;
-          margin-top: 2rem;
-          padding: 0.7rem 1.4rem;
-          border: 1px solid ${lm ? 'rgba(124,58,237,0.5)' : 'rgba(147,51,234,0.7)'};
-          border-radius: 4px;
-          background: ${lm ? 'rgba(124,58,237,0.06)' : 'rgba(147,51,234,0.08)'};
-          color: ${lm ? '#7c3aed' : '#a855f7'};
+        .hero-line2 {
           font-family: 'Orbitron', sans-serif;
-          font-size: 0.65rem;
-          font-weight: 600;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
-          text-decoration: none;
-          cursor: pointer;
-          transition: all 0.2s;
-          backdrop-filter: blur(4px);
+          font-weight: 900;
+          font-size: clamp(2.6rem, 5vw, 4.4rem);
+          letter-spacing: 0.02em;
+          background: linear-gradient(120deg, #c084fc 0%, #a855f7 40%, #7c3aed 75%, #c084fc 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          filter: drop-shadow(0 0 26px rgba(168,85,247,0.45));
+          margin-top: 0.1em;
         }
-        .explore-btn:hover {
-          background: rgba(147,51,234,0.18);
-          border-color: #a855f7;
-          box-shadow: 0 0 22px rgba(147,51,234,0.3);
+        .hero-label {
+          font-family: 'Share Tech Mono', monospace;
+          font-size: 0.85rem;
+          font-weight: 400;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          color: rgba(226,217,243,0.85);
+          margin-top: 1.5rem;
+        }
+        .hero-desc {
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 1.05rem;
+          font-weight: 400;
+          color: rgba(192,178,220,0.65);
+          margin-top: 0.6rem;
+          max-width: 400px;
+          line-height: 1.5;
         }
 
-        /* ── RIGHT PANEL ── */
+        .feature-row {
+          display: flex;
+          gap: 1.8rem;
+          margin-bottom: 1.6rem;
+          flex-wrap: wrap;
+        }
+        .feature-item {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.7rem;
+          max-width: 190px;
+        }
+        .feature-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          background: rgba(147,51,234,0.14);
+          border: 1px solid rgba(147,51,234,0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #c084fc;
+          flex-shrink: 0;
+        }
+        .feature-title {
+          font-family: 'Rajdhani', sans-serif;
+          font-weight: 700;
+          font-size: 0.88rem;
+          letter-spacing: 0.03em;
+          color: #f0eaff;
+          text-transform: uppercase;
+        }
+        .feature-desc {
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 0.82rem;
+          color: rgba(192,178,220,0.55);
+          margin-top: 0.15rem;
+          line-height: 1.35;
+        }
+
         .right-panel {
-          width: min(480px, 46%);
+          width: min(500px, 46%);
           display: flex;
           align-items: center;
           justify-content: center;
           padding: 2rem;
           position: relative;
-          z-index: 1;
+          z-index: 2;
+          background: rgba(5,2,12,0.55);
+          border-left: 1px solid rgba(147,51,234,0.12);
         }
 
         .register-card {
           width: 100%;
-          background: ${lm
-            ? 'rgba(255,252,255,0.88)'
-            : 'rgba(10, 4, 24, 0.84)'};
-          border: 1px solid ${lm
-            ? 'rgba(124,58,237,0.3)'
-            : 'rgba(147,51,234,0.28)'};
+          background: rgba(10, 4, 24, 0.84);
+          border: 1px solid rgba(147,51,234,0.28);
           border-radius: 18px;
-          padding: 2.2rem 2.2rem;
+          padding: 2rem 2.1rem;
           backdrop-filter: blur(28px);
-          box-shadow: ${lm
-            ? '0 8px 60px rgba(124,58,237,0.12), 0 2px 12px rgba(0,0,0,0.06)'
-            : '0 0 0 1px rgba(147,51,234,0.1), 0 32px 80px rgba(0,0,0,0.75), 0 0 60px rgba(100,20,180,0.12)'};
-          transition: background 0.4s, border-color 0.4s, box-shadow 0.4s;
+          box-shadow: 0 0 0 1px rgba(147,51,234,0.1), 0 32px 80px rgba(0,0,0,0.75), 0 0 60px rgba(100,20,180,0.12);
           animation: cardRise 0.6s cubic-bezier(0.16,1,0.3,1) both;
         }
         @keyframes cardRise {
@@ -527,58 +451,96 @@ export default function RegisterPage() {
         @media (prefers-reduced-motion: reduce) {
           .register-card { animation: none; }
         }
+
+        .card-header {
+          display: flex;
+          align-items: flex-start;
+          flex-wrap: wrap;
+          gap: 0.9rem;
+          margin-bottom: 1.3rem;
+        }
+        .card-header-icon {
+          width: 46px;
+          height: 46px;
+          border-radius: 12px;
+          background: rgba(147,51,234,0.16);
+          border: 1px solid rgba(147,51,234,0.35);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #c084fc;
+          flex-shrink: 0;
+        }
+        .card-header-text { flex: 1; min-width: 0; }
+        .card-title {
           font-family: 'Orbitron', sans-serif;
-          font-size: 1.4rem;
+          font-size: 1.15rem;
           font-weight: 700;
-          color: ${lm ? '#1a0040' : '#ffffff'};
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          text-align: center;
-          transition: color 0.3s;
+          color: #ffffff;
+          letter-spacing: 0.02em;
         }
         .card-subtitle {
-          text-align: center;
-          color: ${lm ? 'rgba(80,30,160,0.55)' : 'rgba(200,185,230,0.55)'};
-          font-size: 0.9rem;
-          font-weight: 300;
-          margin-top: 0.35rem;
           font-family: 'Share Tech Mono', monospace;
-          letter-spacing: 0.04em;
-          transition: color 0.3s;
+          font-size: 0.78rem;
+          color: rgba(200,185,230,0.55);
+          margin-top: 0.25rem;
         }
+        .login-link-top {
+          text-align: right;
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 0.78rem;
+          color: rgba(200,185,230,0.5);
+          text-decoration: none;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .login-link-top span {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          color: #a855f7;
+          font-weight: 700;
+          margin-top: 0.2rem;
+        }
+        .login-link-top:hover span { color: #c084fc; text-decoration: underline; }
 
         .divider {
           height: 1px;
-          background: linear-gradient(to right, transparent, ${lm ? 'rgba(124,58,237,0.3)' : 'rgba(147,51,234,0.35)'}, transparent);
-          margin: 1.2rem 0;
-          transition: background 0.3s;
+          background: linear-gradient(to right, transparent, rgba(147,51,234,0.35), transparent);
+          margin: 1rem 0 1.2rem;
         }
 
-        /* Fields */
+        .field-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+          gap: 0.9rem;
+          margin-bottom: 0.85rem;
+        }
+        .field-grid .field-wrap { margin-bottom: 0; min-width: 0; }
         .field-wrap { margin-bottom: 0.85rem; }
         .field-label {
           font-family: 'Share Tech Mono', monospace;
           font-size: 0.68rem;
           letter-spacing: 0.1em;
-          color: ${lm ? 'rgba(80,30,160,0.6)' : 'rgba(192,132,252,0.6)'};
+          color: rgba(192,132,252,0.6);
           text-transform: uppercase;
           margin-bottom: 0.35rem;
           display: block;
-          transition: color 0.3s;
         }
         .field-inner {
           position: relative;
           display: flex;
           align-items: center;
-          background: ${lm ? 'rgba(124,58,237,0.04)' : 'rgba(255,255,255,0.04)'};
-          border: 1px solid ${lm ? 'rgba(124,58,237,0.2)' : 'rgba(147,51,234,0.22)'};
+          min-width: 0;
+          background: rgba(255,255,255,0.04);
+          border: 1px solid rgba(147,51,234,0.22);
           border-radius: 8px;
           transition: border-color 0.2s, box-shadow 0.2s, background 0.3s;
         }
         .field-inner:focus-within {
           border-color: rgba(147,51,234,0.7);
           box-shadow: 0 0 0 3px rgba(147,51,234,0.12);
-          background: ${lm ? 'rgba(124,58,237,0.07)' : 'rgba(255,255,255,0.06)'};
+          background: rgba(255,255,255,0.06);
         }
         .field-inner.error {
           border-color: rgba(244,63,94,0.6);
@@ -588,25 +550,25 @@ export default function RegisterPage() {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 44px;
+          width: 42px;
           height: 44px;
           color: rgba(147,51,234,0.6);
           flex-shrink: 0;
         }
         .field-input {
           flex: 1;
+          min-width: 0;
           background: transparent;
           border: none;
           outline: none;
-          color: ${lm ? '#1a0040' : '#e2d9f3'};
+          color: #e2d9f3;
           font-family: 'Rajdhani', sans-serif;
           font-size: 0.97rem;
           font-weight: 500;
           padding: 0.72rem 0.75rem 0.72rem 0;
           letter-spacing: 0.03em;
-          transition: color 0.3s;
         }
-        .field-input::placeholder { color: ${lm ? 'rgba(80,30,160,0.3)' : 'rgba(180,160,220,0.35)'}; }
+        .field-input::placeholder { color: rgba(180,160,220,0.35); }
         .pw-toggle {
           background: none;
           border: none;
@@ -619,34 +581,22 @@ export default function RegisterPage() {
         }
         .pw-toggle:hover { color: #a855f7; }
 
-        /* Password strength */
         .strength-wrap {
           display: flex;
           align-items: center;
           gap: 0.5rem;
           margin-top: 0.45rem;
         }
-        .strength-bars {
-          display: flex;
-          gap: 3px;
-          flex: 1;
-        }
-        .strength-bar {
-          flex: 1;
-          height: 3px;
-          border-radius: 999px;
-          transition: background 0.3s;
-        }
+        .strength-bars { display: flex; gap: 3px; flex: 1; }
+        .strength-bar { flex: 1; height: 3px; border-radius: 999px; transition: background 0.3s; }
         .strength-label {
           font-family: 'Share Tech Mono', monospace;
           font-size: 0.65rem;
           letter-spacing: 0.08em;
           min-width: 36px;
           text-align: right;
-          transition: color 0.3s;
         }
 
-        /* Error hint */
         .field-error {
           font-family: 'Share Tech Mono', monospace;
           font-size: 0.65rem;
@@ -655,7 +605,27 @@ export default function RegisterPage() {
           letter-spacing: 0.06em;
         }
 
-        /* Register button */
+        .terms-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 0.65rem;
+          margin: 0.3rem 0 1.2rem;
+          font-family: 'Rajdhani', sans-serif;
+          font-size: 0.85rem;
+          color: rgba(200,190,225,0.65);
+          line-height: 1.4;
+        }
+        .terms-checkbox {
+          width: 17px;
+          height: 17px;
+          margin-top: 2px;
+          accent-color: #9333ea;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+        .terms-link { color: #a855f7; font-weight: 600; text-decoration: none; }
+        .terms-link:hover { color: #c084fc; text-decoration: underline; }
+
         .register-btn {
           width: 100%;
           padding: 0.9rem 1rem;
@@ -677,7 +647,6 @@ export default function RegisterPage() {
           box-shadow: 0 4px 24px rgba(124,58,237,0.45);
           position: relative;
           overflow: hidden;
-          margin-top: 0.4rem;
         }
         .register-btn::after {
           content: '';
@@ -762,23 +731,6 @@ export default function RegisterPage() {
           animation: spin 0.7s linear infinite;
         }
 
-        .signin-row {
-          text-align: center;
-          margin-top: 1.2rem;
-          color: ${lm ? 'rgba(60,20,130,0.5)' : 'rgba(180,160,220,0.5)'};
-          font-size: 0.85rem;
-          font-weight: 300;
-          transition: color 0.3s;
-        }
-        .signin-link {
-          color: #a855f7;
-          font-weight: 600;
-          text-decoration: none;
-          margin-left: 0.3rem;
-        }
-        .signin-link:hover { color: #c084fc; text-decoration: underline; }
-
-        /* ── TECH ANIMATIONS ── */
         .void-root::after {
           content: '';
           position: fixed;
@@ -799,31 +751,28 @@ export default function RegisterPage() {
           100% { background-position: 0 200px; }
         }
 
-
         .tech-corner {
           position: absolute;
           width: 24px;
           height: 24px;
           pointer-events: none;
-          opacity: ${lm ? '0.4' : '0.6'};
+          opacity: 0.6;
+          z-index: 2;
         }
         .tech-corner.tl { top: 2.2rem; left: 2.8rem; border-top: 2px solid #7c3aed; border-left: 2px solid #7c3aed; }
-        .tech-corner.tr { top: 2.2rem; right: 2rem; border-top: 2px solid #7c3aed; border-right: 2px solid #7c3aed; }
         .tech-corner.bl { bottom: 3rem; left: 2.8rem; border-bottom: 2px solid #7c3aed; border-left: 2px solid #7c3aed; }
-        .tech-corner.br { bottom: 3rem; right: 2rem; border-bottom: 2px solid #7c3aed; border-right: 2px solid #7c3aed; }
 
         .tech-readout {
           position: absolute;
-          top: 2.6rem;
-          right: 2.5rem;
           font-family: 'Share Tech Mono', monospace;
           font-size: 0.6rem;
-          color: rgba(147,51,234,${lm ? '0.5' : '0.4'});
+          color: rgba(147,51,234,0.4);
           letter-spacing: 0.08em;
           line-height: 1.6;
           text-align: right;
           animation: dataFlicker 4s steps(1) infinite;
           pointer-events: none;
+          z-index: 2;
         }
         @keyframes dataFlicker {
           0%, 88%, 100% { opacity: 1; }
@@ -833,11 +782,9 @@ export default function RegisterPage() {
           96% { opacity: 1; }
         }
 
-        /* Responsive */
         @media (max-width: 900px) {
           .void-root { flex-direction: column; overflow-y: auto; overflow-x: hidden; }
 
-          /* Instead of hiding the logo, show a compact centered header */
           .left-panel {
             display: flex;
             flex: none;
@@ -859,71 +806,97 @@ export default function RegisterPage() {
           .wm-i-wrap svg { width: 27px; height: 33px; }
           .wm-d svg { width: 48px; height: 37px; }
 
-          .left-tagline {
+          .hero-block {
             margin-top: 0.7rem;
-            margin-bottom: 0;
+            margin-bottom: 1rem;
             display: flex;
             flex-direction: column;
             align-items: center;
             text-align: center;
           }
-          .glitch-title { font-size: 1.35rem; }
-          .glitch-sub { font-size: 0.68rem; line-height: 1.6; }
-          .explore-btn { margin-top: 0.85rem; }
+          .hero-desc { max-width: 100%; }
+          .feature-row { justify-content: center; margin-bottom: 1.2rem; }
+          .feature-item { max-width: 150px; }
+
+          .marquee-track { font-size: clamp(2.2rem, 13vw, 5rem); }
 
           .right-panel {
             width: 100%;
             min-height: auto;
             align-items: flex-start;
             padding: 0.5rem 1.25rem 2rem;
+            background: transparent;
+            border-left: none;
           }
         }
         @media (max-width: 480px) {
+          .card-header { gap: 0.7rem; }
+          .login-link-top { width: 100%; text-align: left; margin-top: 0.2rem; }
+          .login-link-top span { justify-content: flex-start; }
           .left-panel { padding: 1.2rem 1rem 0.2rem; }
-          .glitch-title { font-size: 1.1rem; }
-          .glitch-sub { font-size: 0.6rem; }
-          .explore-btn { display: none; }
+          .hero-line1, .hero-line2 { font-size: 2.2rem; }
+          .hero-desc { font-size: 0.9rem; }
+          .feature-row { flex-direction: column; align-items: flex-start; gap: 1rem; }
 
           .register-card { padding: 1.5rem 1.3rem; border-radius: 14px; }
-          .card-title { font-size: 1.1rem; }
-          .card-subtitle { font-size: 0.75rem; }
-          .divider { margin: 0.85rem 0; }
+          .card-title { font-size: 1rem; }
+          .card-subtitle { font-size: 0.7rem; }
+          .field-grid { grid-template-columns: 1fr; gap: 0; }
+          .divider { margin: 0.85rem 0 1rem; }
           .field-wrap { margin-bottom: 0.6rem; }
           .field-label { font-size: 0.72rem; }
           .field-icon { width: 34px; height: 34px; }
-          .field-input { font-size: 0.9rem; padding: 0.55rem 0.55rem 0.55rem 0; }
+          .field-input { font-size: 0.9rem; padding-top: 0.55rem; padding-bottom: 0.55rem; }
           .strength-wrap { margin-top: 0.35rem; }
-          .register-btn { padding: 0.75rem 1rem; margin-top: 0.2rem; }
+          .register-btn { padding: 0.75rem 1rem; }
         }
       `}</style>
 
-      <div className="void-root" style={{ background: '#050507' }}>
-        {/* Canvas background */}
-        <canvas ref={canvasRef} className="void-canvas" />
+      <div className="void-root" style={{ background: '#04030a' }}>
+        <div className="yt-bg-wrap">
+          <div
+            className="yt-poster"
+            style={{ opacity: videoLoaded ? 0 : 1 }}
+          />
+          <iframe
+            src={`https://www.youtube.com/embed/${YT_VIDEO_ID}?autoplay=1&mute=1&loop=1&playlist=${YT_VIDEO_ID}&controls=0&showinfo=0&rel=0&iv_load_policy=3&modestbranding=1&disablekb=1&fs=0&cc_load_policy=0&playsinline=1&enablejsapi=1`}
+            title="Background Video"
+            allow="autoplay; encrypted-media"
+            allowFullScreen={false}
+            onLoad={() => setVideoLoaded(true)}
+            style={{ opacity: videoLoaded ? 1 : 0, transition: 'opacity 0.6s ease' }}
+          />
+        </div>
+        <div className="yt-overlay" />
 
-        {/* ── Left Panel ── */}
+        <div className="welcome-glitch" aria-hidden="true">
+          <div className="glitch-row row-base">
+            <span className="marquee-track">{overlayText}</span>
+          </div>
+          <div className="glitch-row row-r">
+            <span className="marquee-track">{overlayText}</span>
+          </div>
+          <div className="glitch-row row-c">
+            <span className="marquee-track">{overlayText}</span>
+          </div>
+        </div>
+
         <div className="left-panel">
-          {/* Tech corners */}
           <div className="tech-corner tl" />
           <div className="tech-corner bl" />
 
-          {/* Data readout */}
           <div className="tech-readout" style={{ top: 'auto', bottom: '3.5rem', right: '2.5rem', left: 'auto' }}>
             SYS::VOID_v2.1<br />
             AUTH::PORTAL_ACTIVE<br />
             REG::{'0x' + Math.floor(Math.random()*0xFFFFFF).toString(16).toUpperCase().padStart(6,'0')}
           </div>
 
-          {/* VOID Logo — pixel-accurate brand match */}
           <a href="/" className="void-logo-wrap">
             <div className="void-wordmark">
 
-              {/* ── V ── metallic silver italic */}
               <span className="wm-v">V</span>
 
-              {/* ── O ── glowing purple black hole portal with orbital rings */}
               <span className="wm-o-wrap">
-                {/* Animated orbital rings (CSS) */}
                 <span className="orb-ring orb-ring-1" />
                 <span className="orb-ring orb-ring-2" />
                 <span className="orb-ring orb-ring-3" />
@@ -953,31 +926,23 @@ export default function RegisterPage() {
                     </filter>
                   </defs>
 
-                  {/* Outer diffuse glow aura */}
                   <circle cx="36" cy="36" r="32" fill="url(#voidGlow)" opacity="0.7" />
 
-                  {/* Swirling nebula arms */}
                   <path d="M36 10 C50 14 58 24 56 36 C54 48 44 56 36 54" stroke="rgba(109,40,217,0.25)" strokeWidth="6" fill="none" strokeLinecap="round" />
                   <path d="M36 10 C22 14 14 24 16 36 C18 48 28 56 36 54" stroke="rgba(76,29,149,0.2)" strokeWidth="5" fill="none" strokeLinecap="round" />
                   <path d="M36 8 C54 10 64 22 62 36 C60 50 48 60 36 62" stroke="rgba(147,51,234,0.15)" strokeWidth="3" fill="none" strokeLinecap="round" />
                   <path d="M36 8 C18 10 8 22 10 36 C12 50 24 60 36 62" stroke="rgba(109,40,217,0.12)" strokeWidth="3" fill="none" strokeLinecap="round" />
 
-                  {/* Deep void core */}
                   <circle cx="36" cy="36" r="22" fill={lm ? '#2a1060' : '#050507'} />
 
-                  {/* Main photon ring */}
                   <circle cx="36" cy="36" r="26" stroke="#9333ea" strokeWidth="3.5" fill="none" filter="url(#glowStrong)" />
-                  {/* Secondary inner ring */}
                   <circle cx="36" cy="36" r="23" stroke="#7c3aed" strokeWidth="1" fill="none" opacity="0.6" />
-                  {/* Highlight arc */}
                   <path d="M 17 28 A 22 22 0 0 1 36 14" stroke="#c084fc" strokeWidth="3" fill="none" strokeLinecap="round" filter="url(#glowFilter)" />
                   <path d="M 20 31 A 18 18 0 0 1 36 17" stroke="rgba(232,180,255,0.7)" strokeWidth="1.5" fill="none" strokeLinecap="round" />
 
-                  {/* Outer glow rim */}
                   <circle cx="36" cy="36" r="28" stroke="#6d28d9" strokeWidth="6" fill="none" opacity="0.25" />
                   <circle cx="36" cy="36" r="30" stroke="#4c1d95" strokeWidth="4" fill="none" opacity="0.12" />
 
-                  {/* Tiny star particles */}
                   <circle cx="24" cy="20" r="1" fill="#c084fc" opacity="0.7" />
                   <circle cx="48" cy="18" r="0.8" fill="#a855f7" opacity="0.5" />
                   <circle cx="52" cy="40" r="1.2" fill="#c084fc" opacity="0.6" />
@@ -986,7 +951,6 @@ export default function RegisterPage() {
                 </svg>
               </span>
 
-              {/* ── I ── joystick */}
               <span className="wm-i-wrap">
                 <svg width="52" height="72" viewBox="0 0 52 72" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ overflow: 'visible' }}>
                   <defs>
@@ -1026,7 +990,6 @@ export default function RegisterPage() {
                 </svg>
               </span>
 
-              {/* ── D ── game controller */}
               <span className="wm-d">
                 <svg width="80" height="62" viewBox="0 0 90 72" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ overflow: 'visible' }}>
                   <defs>
@@ -1078,89 +1041,97 @@ export default function RegisterPage() {
             </div>
           </a>
 
-          {/* Tagline */}
-          <div className="left-tagline">
-            <div className="glitch-title">
-              {glitchText}
-              <span className="glitch-cursor" />
+          <div className="hero-block">
+            <div className="hero-heading">
+              <span className="hero-line1">JOIN</span>
+              <span className="hero-line2">THE VOID</span>
             </div>
-            <div className="glitch-sub">
-              &gt; CREATE YOUR ACCOUNT TODAY_<br />
-              &gt; 50,000+ GAMES. ONE VOID. INFINITE PLAY_
+            <div className="hero-label">Create your account</div>
+            <p className="hero-desc">Step into infinite worlds. Battle, explore and conquer with millions of players.</p>
+          </div>
+
+          <div className="feature-row">
+            <div className="feature-item">
+              <span className="feature-icon"><Gamepad2 size={19} /></span>
+              <div>
+                <div className="feature-title">50,000+ Games</div>
+                <div className="feature-desc">Endless adventures await you.</div>
+              </div>
             </div>
-            <a href="/library" className="explore-btn">
-              <BookOpen size={12} />
-              Explore Library
-              <ChevronRight size={12} />
-            </a>
+            <div className="feature-item">
+              <span className="feature-icon"><Trophy size={19} /></span>
+              <div>
+                <div className="feature-title">Built For Gamers</div>
+                <div className="feature-desc">Performance, stats and competitions.</div>
+              </div>
+            </div>
+            <div className="feature-item">
+              <span className="feature-icon"><Zap size={19} /></span>
+              <div>
+                <div className="feature-title">Infinite Play</div>
+                <div className="feature-desc">Your journey. Your rules.</div>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* ── Right Panel ── */}
         <div className="right-panel">
           <div className="register-card">
-            <div className="card-title">Create Account</div>
-            <div className="card-subtitle">// initialize your void profile</div>
+            <div className="card-header">
+              <div className="card-header-icon"><User size={22} /></div>
+              <div className="card-header-text">
+                <div className="card-title">Create your account</div>
+                <div className="card-subtitle">Let's get you into the action</div>
+              </div>
+              <Link to="/login" className="login-link-top">
+                Already have an account?
+                <span>Login <ChevronRight size={13} /></span>
+              </Link>
+            </div>
 
             <div className="divider" />
 
-            {/* Username */}
-            <div className="field-wrap">
-              <label className="field-label">Username</label>
-              <div className="field-inner">
-                <div className="field-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-                    <circle cx="12" cy="7" r="4"/>
-                  </svg>
+            <div className="field-grid">
+              <div className="field-wrap">
+                <label className="field-label">Username</label>
+                <div className="field-inner">
+                  <div className="field-icon"><User size={16} /></div>
+                  <input
+                    className="field-input"
+                    type="text"
+                    placeholder="Choose a cool username"
+                    value={form.username}
+                    onChange={update('username')}
+                    required
+                    minLength={3}
+                  />
                 </div>
-                <input
-                  className="field-input"
-                  type="text"
-                  placeholder="CoolGamer123"
-                  value={form.username}
-                  onChange={update('username')}
-                  required
-                  minLength={3}
-                />
+              </div>
+
+              <div className="field-wrap">
+                <label className="field-label">Email Address</label>
+                <div className="field-inner">
+                  <div className="field-icon"><Mail size={16} /></div>
+                  <input
+                    className="field-input"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={form.email}
+                    onChange={update('email')}
+                    required
+                  />
+                </div>
               </div>
             </div>
 
-            {/* Email */}
-            <div className="field-wrap">
-              <label className="field-label">Email</label>
-              <div className="field-inner">
-                <div className="field-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <rect x="2" y="4" width="20" height="16" rx="2"/>
-                    <path d="M2 7l10 7 10-7"/>
-                  </svg>
-                </div>
-                <input
-                  className="field-input"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={form.email}
-                  onChange={update('email')}
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Password */}
             <div className="field-wrap">
               <label className="field-label">Password</label>
               <div className="field-inner">
-                <div className="field-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-                  </svg>
-                </div>
+                <div className="field-icon"><Lock size={16} /></div>
                 <input
                   className="field-input"
                   type={showPw ? 'text' : 'password'}
-                  placeholder="Min 8 characters"
+                  placeholder="Create a strong password"
                   value={form.password}
                   onChange={update('password')}
                   required
@@ -1177,28 +1148,28 @@ export default function RegisterPage() {
                       <div
                         key={i}
                         className="strength-bar"
-                        style={{ background: i <= strength ? strengthColor : (lm ? 'rgba(124,58,237,0.12)' : 'rgba(147,51,234,0.15)') }}
+                        style={{ background: i <= strength ? strengthColor : 'rgba(147,51,234,0.15)' }}
                       />
                     ))}
                   </div>
                   <span className="strength-label" style={{ color: strengthColor }}>{strengthLabel}</span>
                 </div>
               )}
+              {!form.password && (
+                <div className="field-error" style={{ color: 'rgba(192,178,220,0.45)' }}>
+                  Use 8+ characters with a mix of letters, numbers &amp; symbols
+                </div>
+              )}
             </div>
 
-            {/* Confirm Password */}
             <div className="field-wrap">
               <label className="field-label">Confirm Password</label>
               <div className={`field-inner${form.confirm_password && form.password !== form.confirm_password ? ' error' : ''}`}>
-                <div className="field-icon">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                  </svg>
-                </div>
+                <div className="field-icon"><Lock size={16} /></div>
                 <input
                   className="field-input"
                   type={showConfirmPw ? 'text' : 'password'}
-                  placeholder="Repeat password"
+                  placeholder="Confirm your password"
                   value={form.confirm_password}
                   onChange={update('confirm_password')}
                   required
@@ -1212,7 +1183,19 @@ export default function RegisterPage() {
               )}
             </div>
 
-            {/* Submit */}
+            <label className="terms-row">
+              <input
+                type="checkbox"
+                className="terms-checkbox"
+                checked={agreeTerms}
+                onChange={(e) => setAgreeTerms(e.target.checked)}
+              />
+              <span>
+                I agree to the <a href="/terms" className="terms-link">Terms of Service</a> and{' '}
+                <a href="/privacy" className="terms-link">Privacy Policy</a>
+              </span>
+            </label>
+
             <button
               className="register-btn"
               onClick={handleSubmit}
@@ -1221,18 +1204,16 @@ export default function RegisterPage() {
               {loading ? (
                 <><div className="spinner" /> Initializing...</>
               ) : (
-                <>Create Account <ChevronRight size={15} /></>
+                <><Rocket size={15} /> Create Account</>
               )}
             </button>
 
-            {/* OR */}
             <div className="or-row">
               <div className="or-line" />
               <span className="or-text">OR</span>
               <div className="or-line" />
             </div>
 
-            {/* OAuth — Google only, direct redirect into Google's consent screen */}
             <div className="oauth-row">
               <button
                 className="google-btn"
@@ -1252,11 +1233,6 @@ export default function RegisterPage() {
                 )}
                 {googleLoading ? 'Connecting to Google…' : 'Continue with Google'}
               </button>
-            </div>
-
-            <div className="signin-row">
-              Already in the void?
-              <Link to="/login" className="signin-link">Sign in</Link>
             </div>
           </div>
         </div>
