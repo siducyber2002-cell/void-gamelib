@@ -14,6 +14,23 @@ export function AuthProvider({ children }) {
   // axios.defaults.baseURL = 'http://localhost:8000'
   axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+  // The backend's `streak_increased_today` flag stays true for the whole day
+  // once the streak bumps — it's not a "just now" flag. checkStreak() gets
+  // called on every mount AND every tab/app refocus (visibilitychange), so
+  // without a local guard we'd re-show the popup on every single refocus
+  // all day long, which is what was happening. We stamp the day + the
+  // streak count we've already celebrated in localStorage, and only show
+  // the popup if today's increase hasn't been shown yet.
+  const maybeShowStreakPopup = (currentStreak, increasedToday) => {
+    if (!increasedToday) return
+    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD, local calendar day
+    const lastShown = localStorage.getItem('gl_streak_popup_shown')
+    const key = `${today}:${currentStreak}`
+    if (lastShown === key) return // already celebrated this streak today
+    localStorage.setItem('gl_streak_popup_shown', key)
+    setShowStreakPopup(true)
+  }
+
   const checkStreak = async () => {
     try {
       const res = await axios.get('/api/auth/streak')
@@ -21,7 +38,7 @@ export function AuthProvider({ children }) {
         current_streak: res.data.current_streak,
         longest_streak: res.data.longest_streak,
       })
-      if (res.data.streak_increased_today) setShowStreakPopup(true)
+      maybeShowStreakPopup(res.data.current_streak, res.data.streak_increased_today)
     } catch {
       // silent — streak check should never break the app
     }
@@ -109,7 +126,7 @@ export function AuthProvider({ children }) {
         current_streak: res.data.streak.current_streak,
         longest_streak: res.data.streak.longest_streak,
       })
-      if (res.data.streak.streak_increased_today) setShowStreakPopup(true)
+      maybeShowStreakPopup(res.data.streak.current_streak, res.data.streak.streak_increased_today)
     }
 
     return res.data
@@ -122,6 +139,7 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('gl_token')
+    localStorage.removeItem('gl_streak_popup_shown')
     delete axios.defaults.headers.common['Authorization']
     setToken(null)
     setUser(null)
