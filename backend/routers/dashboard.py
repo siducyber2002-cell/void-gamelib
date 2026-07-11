@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from db.database import get_db
 from models.models import UserGame, UserAchievement, Friendship, User, GameStatus, FriendStatus
 from schemas.schemas import DashboardStats
@@ -14,14 +14,21 @@ def get_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    games_owned = db.query(UserGame).filter(
-        UserGame.user_id == current_user.id,
-        UserGame.status != GameStatus.wishlist,
-    ).count()
-
-    hours_played = db.query(func.sum(UserGame.hours_played)).filter(
-        UserGame.user_id == current_user.id,
-    ).scalar() or 0.0
+    # This used to be 4 separate queries against UserGame alone
+    # (games_owned, hours_played, completed, wishlist), each one a full
+    # round trip for the same table/user. Collapsed into a single grouped
+    # aggregate query — the database does all four counts in one pass
+    # instead of four.
+    game_row = (
+        db.query(
+            func.sum(case((UserGame.status != GameStatus.wishlist, 1), else_=0)).label("games_owned"),
+            func.sum(case((UserGame.status == GameStatus.completed, 1), else_=0)).label("completed"),
+            func.sum(case((UserGame.status == GameStatus.wishlist, 1), else_=0)).label("wishlist"),
+            func.coalesce(func.sum(UserGame.hours_played), 0.0).label("hours_played"),
+        )
+        .filter(UserGame.user_id == current_user.id)
+        .one()
+    )
 
     achievements = db.query(UserAchievement).filter(
         UserAchievement.user_id == current_user.id,
@@ -33,21 +40,11 @@ def get_stats(
         Friendship.status == FriendStatus.accepted,
     ).count()
 
-    completed = db.query(UserGame).filter(
-        UserGame.user_id == current_user.id,
-        UserGame.status == GameStatus.completed,
-    ).count()
-
-    wishlist = db.query(UserGame).filter(
-        UserGame.user_id == current_user.id,
-        UserGame.status == GameStatus.wishlist,
-    ).count()
-
     return DashboardStats(
-        games_owned=games_owned,
-        hours_played=round(hours_played, 1),
+        games_owned=game_row.games_owned or 0,
+        hours_played=round(game_row.hours_played or 0.0, 1),
         achievements=achievements,
         friends=friends,
-        completed=completed,
-        wishlist=wishlist,
+        completed=game_row.completed or 0,
+        wishlist=game_row.wishlist or 0,
     )

@@ -1,6 +1,7 @@
 import uuid
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from typing import List
 from db.database import get_db
 from models.models import (
@@ -112,24 +113,42 @@ def _friend_ids_for(user_id: int, db: Session) -> set:
     }
 
 
-def _serialize_group(group: Group, current_user: User, db: Session) -> GroupOut:
+def _serialize_group(
+    group: Group,
+    current_user: User,
+    db: Session,
+    *,
+    has_pending_request: bool | None = None,
+    pending_requests_count: int | None = None,
+) -> GroupOut:
+    """
+    `has_pending_request`/`pending_requests_count` can be passed in
+    pre-computed (see list_groups below) so callers that are serializing
+    many groups at once can batch those two queries into one each instead
+    of running them per-group. Single-group call sites (create_group,
+    get_group, request_to_join, etc.) don't pass them, so this still falls
+    back to querying inline for those — same behavior as before, just opt-in
+    for the N+1 case.
+    """
     member_count = len(group.memberships)
     online_count = sum(1 for m in group.memberships if m.user.online)
     is_member = any(m.user_id == current_user.id for m in group.memberships)
     is_owner = group.owner_id == current_user.id
 
-    has_pending_request = db.query(GroupJoinRequest).filter(
-        GroupJoinRequest.group_id == group.id,
-        GroupJoinRequest.user_id == current_user.id,
-        GroupJoinRequest.status == GroupRequestStatus.pending,
-    ).first() is not None
-
-    pending_requests_count = 0
-    if is_owner:
-        pending_requests_count = db.query(GroupJoinRequest).filter(
+    if has_pending_request is None:
+        has_pending_request = db.query(GroupJoinRequest).filter(
             GroupJoinRequest.group_id == group.id,
+            GroupJoinRequest.user_id == current_user.id,
             GroupJoinRequest.status == GroupRequestStatus.pending,
-        ).count()
+        ).first() is not None
+
+    if pending_requests_count is None:
+        pending_requests_count = 0
+        if is_owner:
+            pending_requests_count = db.query(GroupJoinRequest).filter(
+                GroupJoinRequest.group_id == group.id,
+                GroupJoinRequest.status == GroupRequestStatus.pending,
+            ).count()
 
     return GroupOut(
         id=group.id,
@@ -193,7 +212,52 @@ def list_groups(
         .order_by(Group.created_at.desc())
         .all()
     )
-    return [_serialize_group(g, current_user, db) for g in groups]
+    if not groups:
+        return []
+
+    group_ids = [g.id for g in groups]
+
+    # Previously _serialize_group ran 1-2 extra queries PER group (does the
+    # current user have a pending request here? if they own it, how many
+    # pending requests total?) — so this page was doing up to 1 + 2*N
+    # queries. With CommunityPage polling this list, N groups meant N
+    # queries firing every poll interval, which is exactly the kind of
+    # thing that shows up as stutter/lag as the group count grows. Both
+    # checks are batched into one query each here instead, keyed by
+    # group_id, and handed to _serialize_group as precomputed values.
+
+    # "Do I have a pending request in any of these groups" — one query.
+    pending_group_ids = {
+        row.group_id for row in db.query(GroupJoinRequest.group_id).filter(
+            GroupJoinRequest.group_id.in_(group_ids),
+            GroupJoinRequest.user_id == current_user.id,
+            GroupJoinRequest.status == GroupRequestStatus.pending,
+        ).all()
+    }
+
+    # Pending-request counts, only relevant for groups this user owns —
+    # one grouped query covering all of them at once.
+    owned_group_ids = [g.id for g in groups if g.owner_id == current_user.id]
+    pending_counts_by_group = {}
+    if owned_group_ids:
+        pending_counts_by_group = dict(
+            db.query(GroupJoinRequest.group_id, func.count(GroupJoinRequest.id))
+            .filter(
+                GroupJoinRequest.group_id.in_(owned_group_ids),
+                GroupJoinRequest.status == GroupRequestStatus.pending,
+            )
+            .group_by(GroupJoinRequest.group_id)
+            .all()
+        )
+
+    return [
+        _serialize_group(
+            g, current_user, db,
+            has_pending_request=g.id in pending_group_ids,
+            pending_requests_count=pending_counts_by_group.get(g.id, 0),
+        )
+        for g in groups
+    ]
 
 
 @router.post("/groups", response_model=GroupOut, status_code=201)

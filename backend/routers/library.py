@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, case
 from typing import List, Optional
 from db.database import get_db
 from models.models import UserGame, Game, User, GameStatus
@@ -14,18 +15,32 @@ def get_library_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Return counts for dashboard charts — one fast query per status."""
-    entries = (
-        db.query(UserGame)
+    """
+    Return counts for dashboard charts. This used to pull every UserGame row
+    for the user into Python and count them one by one — fine for a handful
+    of games, but it means the response gets slower and heavier the bigger
+    someone's library grows, and this endpoint is hit on basically every
+    library/dashboard view. A single grouped aggregate query does the same
+    counting in the database instead, so the response size and query cost
+    stay flat no matter how many games are in the library.
+    """
+    row = (
+        db.query(
+            func.count(UserGame.id).label("total"),
+            func.sum(case((UserGame.status == GameStatus.playing, 1), else_=0)).label("playing"),
+            func.sum(case((UserGame.status == GameStatus.completed, 1), else_=0)).label("completed"),
+            func.sum(case((UserGame.status == GameStatus.wishlist, 1), else_=0)).label("wishlist"),
+            func.sum(case((UserGame.is_favorite.is_(True), 1), else_=0)).label("favorites"),
+        )
         .filter(UserGame.user_id == current_user.id)
-        .all()
+        .one()
     )
 
-    total     = len(entries)
-    playing   = sum(1 for e in entries if e.status == GameStatus.playing)
-    completed = sum(1 for e in entries if e.status == GameStatus.completed)
-    wishlist  = sum(1 for e in entries if e.status == GameStatus.wishlist)
-    favorites = sum(1 for e in entries if e.is_favorite)
+    total     = row.total or 0
+    playing   = row.playing or 0
+    completed = row.completed or 0
+    wishlist  = row.wishlist or 0
+    favorites = row.favorites or 0
 
     # Progress score: 0-100 based on completed / non-wishlist games
     owned = total - wishlist
