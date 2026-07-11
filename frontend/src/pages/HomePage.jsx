@@ -8,6 +8,8 @@ import {
 import { useLibrary } from '../context/LibraryContext'
 import { useTheme } from '../context/ThemeContext'
 import { awardXP } from '../utils/xpService'
+import PageTour from '../components/onboarding/PageTour'
+import { homeTourSteps } from '../components/onboarding/tourSteps'
 
 // ─── API KEYS ─────────────────────────────────────────────────────────────────
 const RAWG_KEY = 'cf38811b97cf43bbb8d88c606ed4e73c'
@@ -323,7 +325,7 @@ function useTrailer(title, enabled) {
 }
 
 // ─── ADD BUTTON ───────────────────────────────────────────────────────────────
-function AddButton({ game, coverUrl, t, className='', label, addedLabel, style={} }) {
+function AddButton({ game, coverUrl, t, className='', label, addedLabel, style={}, ...rest }) {
   const { isInLibrary, addToLibrary, removeFromLibrary } = useLibrary()
   const libInLib = isInLibrary(game.rawgSlug)
   const [inLib, setInLib]   = useState(libInLib)
@@ -360,6 +362,7 @@ function AddButton({ game, coverUrl, t, className='', label, addedLabel, style={
 
   return (
     <button
+      {...rest}
       onClick={handle}
       disabled={busy}
       className={`${className} ${popped ? 'added-pop' : ''}`}
@@ -815,6 +818,16 @@ export default function HomePage() {
         transition:'background 0.3s, color 0.3s',
       }}>
 
+        {/* ── First-time guided tour ── */}
+        {/* Waits for hero + library data so every target element actually exists in the DOM
+            before Joyride tries to attach to it — an early run against an empty hero card
+            or an empty filmstrip would just silently skip steps. */}
+        <PageTour
+          pageKey="home"
+          steps={homeTourSteps}
+          ready={!heroLoading && hero.length>0 && !libraryLoading}
+        />
+
         {/* ── Trailer Modal ── */}
         {trailerGame&&<TrailerModal game={trailerGame} coverUrl={trailerCover} onClose={closeTrailer} t={t}/>}
 
@@ -824,7 +837,7 @@ export default function HomePage() {
         {/* ── Top Controls (Search) ── */}
         <div style={{display:'flex',alignItems:'center',gap:10}}>
           {/* Search */}
-          <div ref={searchRef} style={{flex:1,position:'relative'}}>
+          <div ref={searchRef} data-tour="search-bar" style={{flex:1,position:'relative'}}>
             <div
               style={{
                 display:'flex',alignItems:'center',gap:10,padding:'10px 14px',borderRadius:12,
@@ -935,6 +948,7 @@ export default function HomePage() {
                   {/* Buttons */}
                   <div style={{display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
                     <button
+                      data-tour="play-trailer-btn"
                       onClick={()=>openTrailer(current,heroCoverUrl)}
                       style={{
                         display:'flex',alignItems:'center',gap:7,padding:'11px 22px',borderRadius:12,
@@ -949,6 +963,7 @@ export default function HomePage() {
                     </button>
 
                     <AddButton key={current.rawgSlug} game={current} coverUrl={heroCoverUrl} t={t}
+                      data-tour="add-library-btn"
                       style={{
                         display:'flex',alignItems:'center',gap:7,padding:'11px 20px',borderRadius:12,
                         fontSize:13,fontWeight:700,cursor:'pointer',transition:'all 0.2s',
@@ -1048,7 +1063,7 @@ export default function HomePage() {
         </section>
 
         {/* ── Top Categories ── */}
-        <section>
+        <section data-tour="categories-section">
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
             <h2 className="tnr" style={{fontSize:18,fontWeight:700,color:t.text}}>Top Categories</h2>
           </div>
@@ -1174,7 +1189,7 @@ export default function HomePage() {
         </div>
 
         {/* ── Recently Added to Library ── */}
-        <section>
+        <section data-tour="recent-library-section">
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <BookOpen size={15} style={{color:t.accent}}/>

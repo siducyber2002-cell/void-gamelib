@@ -169,6 +169,27 @@ export function AuthProvider({ children }) {
     return res.data
   }, [])
 
+  // Records that the guided tour for `pageKey` has been shown, both on the
+  // backend (so it doesn't replay on another device or after a cache clear)
+  // and in local user state (so PageTour sees the update immediately without
+  // a refetch). Fire-and-forget on failure — a tour re-showing once more
+  // isn't worth breaking the page over, so we don't surface a toast here.
+  const markOnboardingSeen = useCallback(async (pageKey) => {
+    setUser(prev => {
+      if (!prev) return prev
+      const seen = new Set(prev.onboarding_seen_pages || [])
+      seen.add(pageKey)
+      return { ...prev, onboarding_seen_pages: [...seen] }
+    })
+    try {
+      const res = await axios.post(`/api/auth/onboarding/seen/${pageKey}`)
+      setUser(prev => (prev ? { ...prev, onboarding_seen_pages: res.data.seen_pages } : prev))
+    } catch {
+      // silent — matches checkStreak's fire-and-forget precedent; optimistic
+      // local update above already prevents the tour from re-showing this session
+    }
+  }, [])
+
   const deleteAccount = useCallback(async (password) => {
     const res = await axios.delete('/api/auth/me', { data: { password } })
     logout()
@@ -183,10 +204,10 @@ export function AuthProvider({ children }) {
   // the root).
   const value = useMemo(() => ({
     user, token, loading, login, register, logout, updateProfile, updateUserFields, changePassword, deleteAccount,
-    streak, showStreakPopup, dismissStreakPopup, checkStreak,
+    streak, showStreakPopup, dismissStreakPopup, checkStreak, markOnboardingSeen,
   }), [
     user, token, loading, login, register, logout, updateProfile, updateUserFields, changePassword, deleteAccount,
-    streak, showStreakPopup, dismissStreakPopup, checkStreak,
+    streak, showStreakPopup, dismissStreakPopup, checkStreak, markOnboardingSeen,
   ])
 
   return (
