@@ -6,6 +6,7 @@ import {
   ArrowLeft, Send, Users, Circle, ShieldCheck, ShieldAlert, UserPlus,
   Check, CheckCheck, X, Loader2, Clock, LogOut, Search, Bell, Paperclip, Smile,
   Camera, Trash2, ImagePlus, Mic, FileText, Download, MoreVertical, Eraser,
+  ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -94,6 +95,8 @@ export default function GroupDetailPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [promoting, setPromoting] = useState({})
+  const [confirmPromote, setConfirmPromote] = useState(null)
+  const [newMessagesPending, setNewMessagesPending] = useState(false)
   const coverInputRef = useRef(null)
   const mediaInputRef = useRef(null)
   const attachInputRef = useRef(null)
@@ -102,7 +105,8 @@ export default function GroupDetailPage() {
   const recordTimerRef = useRef(null)
 
   const bottomRef = useRef(null)
-  const shouldAutoScrollRef = useRef(true)
+  const autoFollowRef = useRef(true)
+  const lastMessageIdRef = useRef(null)
   const pollRef = useRef(null)
 
   const loadAll = useCallback(async () => {
@@ -147,28 +151,43 @@ export default function GroupDetailPage() {
     return () => clearInterval(pollRef.current)
   }, [group?.is_member, groupId])
 
-  // Track whether the bottom-of-thread marker is actually on screen via
-  // IntersectionObserver rather than measuring scrollTop on one specific
-  // element. scrollTop math assumes the inner message pane is the thing
-  // that scrolls — if the page itself scrolls instead (common once the
-  // layout's height isn't strictly bounded, e.g. on some viewport sizes),
-  // that math never updates and the poll below keeps yanking the view
-  // back down. Intersection is measured against the real viewport, so it
-  // stays correct no matter which ancestor is actually scrolling.
-  useEffect(() => {
-    const target = bottomRef.current
-    if (!target) return
-    const observer = new IntersectionObserver(
-      ([entry]) => { shouldAutoScrollRef.current = entry.isIntersecting },
-      { threshold: 0.01 }
-    )
-    observer.observe(target)
-    return () => observer.disconnect()
-  }, [group?.is_member])
+  // Detect the user's *intent* to scroll (wheel/touch) rather than trying to
+  // infer it from scroll position. Position-based checks (scrollTop math,
+  // IntersectionObserver) all assume we know which element is actually the
+  // one scrolling — but that can be the inner pane on some layouts/viewports
+  // and an outer page container on others, which is what kept breaking this.
+  // A wheel or touch-drag originating over the thread is unambiguous proof
+  // the person took control, no matter which ancestor ends up scrolling.
+  const stopAutoFollow = () => { autoFollowRef.current = false }
+
+  // Optional convenience: if they scroll back down to the very bottom
+  // themselves, resume auto-follow. Harmless if this container isn't the
+  // actual scrolling element — it just won't fire, and the Jump to Latest
+  // pill still works either way.
+  const handleContainerScroll = (e) => {
+    const el = e.currentTarget
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
+      autoFollowRef.current = true
+      setNewMessagesPending(false)
+    }
+  }
+
+  const jumpToLatest = () => {
+    autoFollowRef.current = true
+    setNewMessagesPending(false)
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   useEffect(() => {
-    if (shouldAutoScrollRef.current) {
+    const last = messages[messages.length - 1]
+    const isNewLastMessage = last && last.id !== lastMessageIdRef.current
+    if (last) lastMessageIdRef.current = last.id
+
+    if (autoFollowRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+      setNewMessagesPending(false)
+    } else if (isNewLastMessage) {
+      setNewMessagesPending(true)
     }
   }, [messages])
 
@@ -232,7 +251,7 @@ export default function GroupDetailPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setMessages(prev => [...prev, res.data])
-      shouldAutoScrollRef.current = true
+      autoFollowRef.current = true
       setInput('')
       clearPendingFile()
     } catch (err) {
@@ -310,7 +329,8 @@ export default function GroupDetailPage() {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setMessages(prev => [...prev, res.data])
-      shouldAutoScrollRef.current = true
+      autoFollowRef.current = true
+    } catch {
       toast.error('Voice note failed to send')
     } finally {
       setSending(false)
@@ -362,6 +382,7 @@ export default function GroupDetailPage() {
       toast.error(err.response?.data?.detail || 'Could not promote member')
     } finally {
       setPromoting(s => ({ ...s, [member.id]: false }))
+      setConfirmPromote(null)
     }
   }
 
@@ -581,7 +602,13 @@ export default function GroupDetailPage() {
           </div>
 
           {/* messages */}
-          <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4 min-h-[320px]">
+          <div className="relative flex-1 min-h-[320px]">
+          <div
+            onWheel={stopAutoFollow}
+            onTouchMove={stopAutoFollow}
+            onScroll={handleContainerScroll}
+            className="absolute inset-0 overflow-y-auto p-5 flex flex-col gap-4"
+          >
             {!group.is_member ? (
               <div className="m-auto text-center max-w-xs">
                 <ShieldCheck size={36} className="mx-auto mb-3 text-slate-600" />
@@ -654,6 +681,16 @@ export default function GroupDetailPage() {
               )
             })}
             <div ref={bottomRef} />
+          </div>
+
+          {newMessagesPending && (
+            <button
+              onClick={jumpToLatest}
+              className="absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold shadow-xl shadow-violet-950/40 z-20"
+            >
+              <ChevronDown size={13} /> New messages
+            </button>
+          )}
           </div>
 
           {/* input */}
@@ -793,7 +830,7 @@ export default function GroupDetailPage() {
                     {m.role === 'admin' && <ShieldAlert size={12} className="text-sky-400 flex-shrink-0" title="Admin" />}
                     {canManage && !m.is_self && m.role !== 'owner' && m.role !== 'admin' && (
                       <button
-                        onClick={() => promoteToAdmin(m)}
+                        onClick={() => setConfirmPromote(m)}
                         disabled={promoting[m.id]}
                         title="Make admin"
                         className="w-6 h-6 rounded-md bg-sky-600/15 text-sky-400 hover:bg-sky-600/25 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
@@ -891,6 +928,29 @@ export default function GroupDetailPage() {
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold disabled:opacity-50"
               >
                 {clearing ? <Loader2 size={14} className="animate-spin" /> : <Eraser size={14} />} Clear Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmPromote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setConfirmPromote(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+            <h2 className="font-display font-bold text-white text-lg">Make {confirmPromote.username} an admin?</h2>
+            <p className="text-sm text-slate-400">
+              They'll get the same management powers as you in {group.name} — inviting members, approving join requests, changing the cover, and clearing chat.
+            </p>
+            <div className="flex gap-2 justify-end mt-1">
+              <button onClick={() => setConfirmPromote(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-800">
+                Cancel
+              </button>
+              <button
+                onClick={() => promoteToAdmin(confirmPromote)}
+                disabled={promoting[confirmPromote.id]}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold disabled:opacity-50"
+              >
+                {promoting[confirmPromote.id] ? <Loader2 size={14} className="animate-spin" /> : <ShieldAlert size={14} />} Make Admin
               </button>
             </div>
           </div>
