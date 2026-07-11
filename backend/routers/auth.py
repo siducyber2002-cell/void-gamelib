@@ -296,6 +296,25 @@ def get_streak_history(
     return [log.date.isoformat() for log in logs]
 
 
+@router.post("/onboarding/seen/{page_key}")
+def mark_onboarding_seen(
+    page_key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Called once by PageTour.jsx when a user finishes or skips a page's guided
+    tour. Idempotent — adding a page_key that's already recorded is a no-op,
+    so the frontend doesn't need to check first.
+    """
+    seen = set(current_user.onboarding_seen_pages or [])
+    seen.add(page_key)
+    current_user.onboarding_seen_pages = list(seen)
+    db.commit()
+    db.refresh(current_user)
+    return {"seen_pages": current_user.onboarding_seen_pages}
+
+
 @router.put("/me", response_model=UserOut)
 def update_me(
     payload: UserUpdate,

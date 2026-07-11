@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text, Float, Boolean,
-    DateTime, Date, ForeignKey, Enum, UniqueConstraint
+    DateTime, Date, ForeignKey, Enum, UniqueConstraint, JSON
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -67,6 +67,12 @@ class User(Base):
 
     # ── Presence ──
     last_seen = Column(DateTime(timezone=True), nullable=True)
+
+    # ── Onboarding ──
+    # Page keys (e.g. "home", "dashboard") whose first-time guided tour this
+    # user has already finished or skipped. Checked by PageTour.jsx via
+    # /api/auth/me so a tour never replays once seen, on any device.
+    onboarding_seen_pages = Column(JSON, default=list)
 
     @property
     def online(self) -> bool:
