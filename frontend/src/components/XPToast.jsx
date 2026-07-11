@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, memo } from 'react'
 import { Zap, Users, MessageCircle, UserPlus } from 'lucide-react'
 
 // ── Event bus ────────────────────────────────────────────────────────────
@@ -48,8 +48,12 @@ const TOAST_META = {
   },
 }
 
-// Single toast item
-function ToastItem({ toast, onRemove }) {
+// Single toast item — wrapped in memo() so it only re-renders when its own
+// `toast` prop actually changes. Without this, every add/remove of ANY
+// toast re-renders the whole toasts array in the container, which re-ran
+// the JSX (and rebuilt every inline style object) for every already-visible
+// toast too, not just the new one.
+const ToastItem = memo(function ToastItem({ toast, onRemove }) {
   const [visible, setVisible] = useState(false)
   const [leaving, setLeaving] = useState(false)
   const meta = TOAST_META[toast.type] || TOAST_META.xp
@@ -152,22 +156,34 @@ function ToastItem({ toast, onRemove }) {
       </div>
     </div>
   )
-}
+})
+
+// The keyframes never depend on props — they were previously inlined as a
+// <style> tag rendered by XPToastContainer, which re-runs on every single
+// toast add/remove (i.e. constantly). Even though the CSS text itself never
+// changes, React was still touching that <style> node's text content on
+// every one of those re-renders. Splitting it into its own memo'd component
+// with no props means React renders it exactly once and never revisits it.
+const ToastKeyframes = memo(function ToastKeyframes() {
+  return (
+    <style>{`
+      @keyframes xpShimmer {
+        0%   { background-position: 200% center; }
+        100% { background-position: -200% center; }
+      }
+      @keyframes xpProgress {
+        from { width: 100%; }
+        to   { width: 0%; }
+      }
+    `}</style>
+  )
+})
 
 // Internal presentational container — rendered once by the Provider, never import directly
 function XPToastContainer({ toasts, onRemove }) {
   return (
     <>
-      <style>{`
-        @keyframes xpShimmer {
-          0%   { background-position: 200% center; }
-          100% { background-position: -200% center; }
-        }
-        @keyframes xpProgress {
-          from { width: 100%; }
-          to   { width: 0%; }
-        }
-      `}</style>
+      <ToastKeyframes />
       <div style={{
         position: 'fixed',
         bottom: 28,
@@ -196,15 +212,15 @@ const XPToastCtx = createContext(null)
 export function XPToastProvider({ children }) {
   const [toasts, setToasts] = useState([])
 
-  const addToast = (toast) => {
+  const addToast = useCallback((toast) => {
     setToasts(prev => [...prev, { id: ++_toastId, ...toast }])
-  }
+  }, [])
 
-  const removeToast = (id) => {
+  const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id))
-  }
+  }, [])
 
-  const showXP = (xpEarned, action, detail = '') => {
+  const showXP = useCallback((xpEarned, action, detail = '') => {
     const labels = {
       made_friend:     'New Friend Added',
       added_game:      'Game Added to Library',
@@ -219,27 +235,27 @@ export function XPToastProvider({ children }) {
       xp: `+${xpEarned} XP`,
       duration: 3500,
     })
-  }
+  }, [addToast])
 
-  const showLevelUp = (newLevel) => {
+  const showLevelUp = useCallback((newLevel) => {
     addToast({
       type: 'level_up',
       title: `Level Up! You're now Level ${newLevel}`,
       subtitle: 'Keep going — you\'re on fire!',
       duration: 5000,
     })
-  }
+  }, [addToast])
 
-  const showFriendRequest = (username) => {
+  const showFriendRequest = useCallback((username) => {
     addToast({
       type: 'friend_request',
       title: 'New Friend Request',
       subtitle: `${username} wants to be friends`,
       duration: 4000,
     })
-  }
+  }, [addToast])
 
-  const showFriendAccepted = (username) => {
+  const showFriendAccepted = useCallback((username) => {
     addToast({
       type: 'friend_accepted',
       title: 'Friend Request Accepted!',
@@ -247,20 +263,20 @@ export function XPToastProvider({ children }) {
       xp: '+30 XP',
       duration: 4000,
     })
-  }
+  }, [addToast])
 
-  const showNewMessage = (username) => {
+  const showNewMessage = useCallback((username) => {
     addToast({
       type: 'new_message',
       title: 'New Message',
       subtitle: `${username} sent you a message`,
       duration: 3500,
     })
-  }
+  }, [addToast])
 
   // Convenience: call the backend /api/xp/award endpoint AND show the right
   // toast(s) from the response, in one go. Pages will mostly just call this.
-  const awardXP = async (action, detail = '') => {
+  const awardXP = useCallback(async (action, detail = '') => {
     try {
       const axios = (await import('axios')).default
       const res = await axios.post('/api/xp/award', { action, detail })
@@ -277,7 +293,7 @@ export function XPToastProvider({ children }) {
       console.error('XP award failed:', e)
       return null
     }
-  }
+  }, [showXP, showLevelUp])
 
   // Listen for XP events fired from outside React (e.g. xpService.js)
   useEffect(() => {
@@ -289,9 +305,14 @@ export function XPToastProvider({ children }) {
       }
     })
     return unsubscribe
-  }, [])
+  }, [showXP, showLevelUp])
 
-  const value = {
+  // Every action here is now a stable useCallback reference, so this value
+  // object only changes identity when `toasts` itself changes — components
+  // that call useXPToast() purely to trigger toasts (not to read the list)
+  // no longer re-render every time a toast is added or expires elsewhere
+  // in the app.
+  const value = useMemo(() => ({
     toasts,
     removeToast,
     showXP,
@@ -300,7 +321,7 @@ export function XPToastProvider({ children }) {
     showFriendAccepted,
     showNewMessage,
     awardXP,
-  }
+  }), [toasts, removeToast, showXP, showLevelUp, showFriendRequest, showFriendAccepted, showNewMessage, awardXP])
 
   return (
     <XPToastCtx.Provider value={value}>

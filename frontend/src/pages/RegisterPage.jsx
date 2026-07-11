@@ -8,94 +8,11 @@ import {
   User, Mail, Lock, Rocket,
 } from 'lucide-react'
 
-export default function RegisterPage() {
-  const { register } = useAuth()
-  const navigate = useNavigate()
-  const [form, setForm] = useState({
-    username: '', email: '', password: '', confirm_password: '',
-  })
-  const [agreeTerms, setAgreeTerms] = useState(false)
-  const [showPw, setShowPw] = useState(false)
-  const [showConfirmPw, setShowConfirmPw] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [googleLoading, setGoogleLoading] = useState(false)
-  const [overlayText, setOverlayText] = useState('WELCOME TO VOID')
-  const [videoLoaded, setVideoLoaded] = useState(false)
-  const YT_VIDEO_ID = 'f3st1DfrvIc'
-  const darkMode = true
-
-  const overlayVariants = [
-    'WELCOME TO VOID',
-    'W3LC0ME T0 V01D',
-    'WΞLCOMΞ TO VOID',
-    'WELCOME TO VOID',
-    'W3LC0ME_T0_V01D',
-    'WELCOME TO VOID',
-  ]
-
-  useEffect(() => {
-    let idx = 0
-    const interval = setInterval(() => {
-      idx = (idx + 1) % overlayVariants.length
-      setOverlayText(overlayVariants[idx])
-    }, 1400)
-    return () => clearInterval(interval)
-  }, [])
-
-  const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (form.password !== form.confirm_password) {
-      return toast.error("Passwords don't match!")
-    }
-    if (!agreeTerms) {
-      return toast.error('Please agree to the Terms of Service and Privacy Policy')
-    }
-    setLoading(true)
-    try {
-      await register({
-        username: form.username,
-        email: form.email,
-        password: form.password,
-      })
-      toast.success('Welcome to the Void 🌀')
-      navigate('/login')
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Registration failed')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const pwStrength = () => {
-    const p = form.password
-    if (!p) return 0
-    let s = 0
-    if (p.length >= 8) s++
-    if (/[A-Z]/.test(p)) s++
-    if (/[0-9]/.test(p)) s++
-    if (/[^A-Za-z0-9]/.test(p)) s++
-    return s
-  }
-
-  const strength = pwStrength()
-  const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'][strength]
-  const strengthColors = ['', '#f43f5e', '#f59e0b', '#a855f7', '#7c3aed']
-  const strengthColor = strengthColors[strength]
-
-  const lm = !darkMode
-
-  const handleGoogleLogin = () => {
-    setGoogleLoading(true)
-    const apiBase = import.meta.env.VITE_API_URL || ''
-    const next = encodeURIComponent(window.location.origin + '/')
-    window.location.href = `${apiBase}/api/auth/google?next=${next}`
-  }
-
-  return (
-    <>
-      <style>{`
+// Static CSS, hoisted to module scope so it's built once instead of on
+// every RegisterPage render (previously a template literal recomputed on
+// every keystroke/state change — wasted work even though the resulting
+// string never actually changed, since darkMode is hardcoded true here).
+const REGISTER_PAGE_CSS = `
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -260,13 +177,11 @@ export default function RegisterPage() {
           font-family: 'Orbitron', sans-serif;
           font-size: 3.9rem;
           font-weight: 900;
-          color: ${lm ? '#2a1060' : '#d8d0f0'};
-          text-shadow: ${lm ? '1px 2px 8px rgba(80,40,160,0.18)' : '0 0 24px rgba(200,160,255,0.35), 2px 4px 16px rgba(0,0,0,0.8)'};
+          color: #d8d0f0;
+          text-shadow: 0 0 24px rgba(200,160,255,0.35), 2px 4px 16px rgba(0,0,0,0.8);
           letter-spacing: 0em;
           line-height: 1;
-          background: ${lm
-            ? 'linear-gradient(170deg, #7c60c0 0%, #3a206a 40%, #7c60c0 70%, #2a1060 100%)'
-            : 'linear-gradient(170deg, #ffffff 0%, #b0a0d8 30%, #e8e0ff 55%, #8070b0 80%, #d0c8f0 100%)'};
+          background: linear-gradient(170deg, #ffffff 0%, #b0a0d8 30%, #e8e0ff 55%, #8070b0 80%, #d0c8f0 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           background-clip: text;
@@ -850,7 +765,118 @@ export default function RegisterPage() {
           .strength-wrap { margin-top: 0.35rem; }
           .register-btn { padding: 0.75rem 1rem; }
         }
-      `}</style>
+`
+
+const OVERLAY_VARIANTS = [
+  'WELCOME TO VOID',
+  'W3LC0ME T0 V01D',
+  'WΞLCOMΞ TO VOID',
+  'WELCOME TO VOID',
+  'W3LC0ME_T0_V01D',
+  'WELCOME TO VOID',
+]
+
+// Ticking background text, isolated into its own component. Previously this
+// state lived in RegisterPage itself, so every 1.4s tick re-rendered the
+// entire page — giant inline SVG logo, YouTube background, whole form — just
+// to swap 3 lines of text, causing a visible stutter every 1.4 seconds.
+// Keeping it in its own component means only this tiny subtree re-renders.
+function GlitchOverlay() {
+  const [overlayText, setOverlayText] = useState(OVERLAY_VARIANTS[0])
+
+  useEffect(() => {
+    let idx = 0
+    const interval = setInterval(() => {
+      idx = (idx + 1) % OVERLAY_VARIANTS.length
+      setOverlayText(OVERLAY_VARIANTS[idx])
+    }, 1400)
+    return () => clearInterval(interval)
+  }, [])
+
+  return (
+    <div className="welcome-glitch" aria-hidden="true">
+      <div className="glitch-row row-base">
+        <span className="marquee-track">{overlayText}</span>
+      </div>
+      <div className="glitch-row row-r">
+        <span className="marquee-track">{overlayText}</span>
+      </div>
+      <div className="glitch-row row-c">
+        <span className="marquee-track">{overlayText}</span>
+      </div>
+    </div>
+  )
+}
+
+export default function RegisterPage() {
+  const { register } = useAuth()
+  const navigate = useNavigate()
+  const [form, setForm] = useState({
+    username: '', email: '', password: '', confirm_password: '',
+  })
+  const [agreeTerms, setAgreeTerms] = useState(false)
+  const [showPw, setShowPw] = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [videoLoaded, setVideoLoaded] = useState(false)
+  const YT_VIDEO_ID = 'f3st1DfrvIc'
+  const darkMode = true
+
+  const update = (field) => (e) => setForm({ ...form, [field]: e.target.value })
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (form.password !== form.confirm_password) {
+      return toast.error("Passwords don't match!")
+    }
+    if (!agreeTerms) {
+      return toast.error('Please agree to the Terms of Service and Privacy Policy')
+    }
+    setLoading(true)
+    try {
+      await register({
+        username: form.username,
+        email: form.email,
+        password: form.password,
+      })
+      toast.success('Welcome to the Void 🌀')
+      navigate('/login')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Registration failed')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const pwStrength = () => {
+    const p = form.password
+    if (!p) return 0
+    let s = 0
+    if (p.length >= 8) s++
+    if (/[A-Z]/.test(p)) s++
+    if (/[0-9]/.test(p)) s++
+    if (/[^A-Za-z0-9]/.test(p)) s++
+    return s
+  }
+
+  const strength = pwStrength()
+  const strengthLabel = ['', 'Weak', 'Fair', 'Good', 'Strong'][strength]
+  const strengthColors = ['', '#f43f5e', '#f59e0b', '#a855f7', '#7c3aed']
+  const strengthColor = strengthColors[strength]
+
+  const lm = !darkMode
+
+  const handleGoogleLogin = () => {
+    setGoogleLoading(true)
+    const apiBase = import.meta.env.VITE_API_URL || ''
+    const next = encodeURIComponent(window.location.origin + '/')
+    window.location.href = `${apiBase}/api/auth/google?next=${next}`
+  }
+
+  return (
+    <>
+      <style>{REGISTER_PAGE_CSS}</style>
 
       <div className="void-root" style={{ background: '#04030a' }}>
         <div className="yt-bg-wrap">
@@ -869,17 +895,7 @@ export default function RegisterPage() {
         </div>
         <div className="yt-overlay" />
 
-        <div className="welcome-glitch" aria-hidden="true">
-          <div className="glitch-row row-base">
-            <span className="marquee-track">{overlayText}</span>
-          </div>
-          <div className="glitch-row row-r">
-            <span className="marquee-track">{overlayText}</span>
-          </div>
-          <div className="glitch-row row-c">
-            <span className="marquee-track">{overlayText}</span>
-          </div>
-        </div>
+        <GlitchOverlay />
 
         <div className="left-panel">
           <div className="tech-corner tl" />

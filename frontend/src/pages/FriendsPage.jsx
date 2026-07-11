@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   UserPlus, Check, X, MessageCircle, Shield,
@@ -26,6 +26,485 @@ const computeCols = (availableWidth) => {
   const cols = Math.floor((availableWidth + GRID_GAP) / (CARD_MIN_WIDTH + GRID_GAP))
   return Math.max(1, Math.min(cols, 6))
 }
+
+// Gotham-noir skyline watermark. Windows are seeded off position so the
+// scene stays static per render instead of re-randomizing on repaint.
+// This is declared at module scope (not inside FriendsPage) and wrapped in
+// memo: it only depends on isDark/bgPage, but was previously redefined
+// inline on every render, forcing React to fully rebuild this ~150-node SVG
+// on every keystroke, resize, or tab switch — the single biggest source of
+// stutter on this page.
+const BackgroundArt = memo(function BackgroundArt({ isDark, bgPage }) {
+  // Deterministic pseudo-random window placement (no re-shuffle per render)
+  const seeded = (n) => { const x = Math.sin(n * 999) * 10000; return x - Math.floor(x) }
+  const windows = (buildingX, buildingY, w, h, seedBase) => {
+    const cols = Math.max(2, Math.floor(w / 14))
+    const rows = Math.max(2, Math.floor(h / 18))
+    const cells = []
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (seeded(seedBase + r * 31 + c * 7) > 0.62) {
+          cells.push(
+            <rect
+              key={`${seedBase}-${r}-${c}`}
+              x={buildingX + 6 + c * 14}
+              y={buildingY + 10 + r * 18}
+              width="5" height="7"
+              fill={ACCENT.primary}
+              opacity={isDark ? 0.8 : 0.5}
+            />
+          )
+        }
+      }
+    }
+    return cells
+  }
+
+  const backBuildings = [
+    [0, 780, 90, 120], [100, 820, 70, 80], [180, 760, 60, 140], [250, 800, 100, 100],
+    [360, 740, 50, 160], [420, 810, 90, 90], [520, 770, 60, 130], [590, 800, 110, 100],
+    [710, 750, 60, 150], [780, 820, 80, 80], [870, 790, 100, 110], [980, 760, 60, 140],
+    [1050, 810, 90, 90], [1150, 780, 70, 120], [1230, 820, 100, 80], [1340, 750, 60, 150],
+  ]
+  const frontBuildings = [
+    [-10, 830, 80, 220], [70, 870, 50, 180], [130, 800, 70, 250], [210, 860, 90, 190],
+    [310, 780, 55, 270], [375, 850, 100, 200], [485, 810, 60, 240], [555, 870, 85, 180],
+    [650, 790, 65, 260], [725, 840, 110, 210], [845, 800, 60, 250], [915, 860, 90, 190],
+    [1015, 780, 55, 270], [1080, 850, 100, 200], [1190, 810, 65, 240], [1265, 870, 90, 180],
+    [1365, 800, 45, 250],
+  ]
+
+  return (
+    <div
+      aria-hidden="true"
+      style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}
+    >
+      <svg viewBox="0 0 1400 1000" preserveAspectRatio="xMidYMax slice" style={{ width: '100%', height: '100%' }}>
+        <defs>
+          <radialGradient id="fp-spot" cx="76%" cy="16%" r="46%">
+            <stop offset="0%" stopColor={ACCENT.primary} stopOpacity={isDark ? 0.55 : 0.25} />
+            <stop offset="55%" stopColor={ACCENT.primary} stopOpacity={isDark ? 0.18 : 0.08} />
+            <stop offset="100%" stopColor={ACCENT.primary} stopOpacity="0" />
+          </radialGradient>
+          <linearGradient id="fp-fog" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={bgPage} stopOpacity="0" />
+            <stop offset="100%" stopColor={bgPage} stopOpacity={isDark ? 0.9 : 0.75} />
+          </linearGradient>
+          <linearGradient id="fp-top-fade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={bgPage} stopOpacity="1" />
+            <stop offset="35%" stopColor={bgPage} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* spotlight glow */}
+        <circle cx="1064" cy="160" r="440" fill="url(#fp-spot)" />
+        <line x1="1064" y1="160" x2="640" y2="1000" stroke={ACCENT.primary} strokeOpacity={isDark ? 0.10 : 0.05} strokeWidth="90" />
+        <line x1="1064" y1="160" x2="1360" y2="1000" stroke={ACCENT.primary} strokeOpacity={isDark ? 0.10 : 0.05} strokeWidth="90" />
+
+        {/* bat silhouette, sitting inside the spotlight */}
+        <g transform="translate(1064,150) scale(2.1)" fill={isDark ? '#0b0b14' : '#1b1230'} opacity={isDark ? 0.75 : 0.45}>
+          <path d="M0,-6
+            C-6,-16 -18,-20 -26,-14
+            C-34,-22 -48,-20 -52,-10
+            C-70,-16 -96,-6 -108,10
+            C-84,4 -66,6 -54,14
+            C-64,20 -78,34 -80,50
+            C-60,38 -42,32 -30,32
+            C-34,40 -32,50 -24,54
+            C-20,42 -12,34 -2,32
+            L0,30 L2,32
+            C12,34 20,42 24,54
+            C32,50 34,40 30,32
+            C42,32 60,38 80,50
+            C78,34 64,20 54,14
+            C66,6 84,4 108,10
+            C96,-6 70,-16 52,-10
+            C48,-20 34,-22 26,-14
+            C18,-20 6,-16 0,-6 Z" />
+        </g>
+
+        {/* far skyline */}
+        <g fill={isDark ? '#1a1830' : '#c9c6dc'} opacity={isDark ? 0.55 : 0.5}>
+          {backBuildings.map(([x, y, w, h], i) => <rect key={i} x={x} y={y} width={w} height={h} />)}
+        </g>
+
+        {/* near skyline with lit windows */}
+        <g>
+          {frontBuildings.map(([x, y, w, h], i) => (
+            <g key={i}>
+              <rect x={x} y={y} width={w} height={h} fill={isDark ? '#100e1c' : '#8f8aac'} opacity={isDark ? 0.85 : 0.4} />
+              {windows(x, y, w, h, i + 1)}
+            </g>
+          ))}
+        </g>
+
+        {/* ground fog + top fade so the art blends into the page rather than hard-cutting */}
+        <rect x="0" y="700" width="1400" height="300" fill="url(#fp-fog)" />
+        <rect x="0" y="0" width="1400" height="260" fill="url(#fp-top-fade)" />
+      </svg>
+    </div>
+  )
+})
+
+// Compact row used by Requests / Add Friend modal / Online / Offline / Blocked.
+// Module-scope + memo for the same reason as BackgroundArt/FriendCard: it's
+// rendered in lists and was previously redefined (and fully remounted) on
+// every FriendsPage render.
+const PersonRow = memo(function PersonRow({ person, actions, bgCard, borderClr, txtPri, txtMut }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 14,
+      padding: '12px 16px', borderRadius: 14,
+      background: bgCard, border: `1px solid ${borderClr}`,
+    }}>
+      <div style={{
+        width: 42, height: 42, borderRadius: 12, flexShrink: 0,
+        background: avatarColor(person.username),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        color: '#fff', fontWeight: 800, fontSize: 18, overflow: 'hidden',
+      }}>
+        {person.avatar_url
+          ? <img src={person.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : person.username?.[0]?.toUpperCase()}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontWeight: 700, fontSize: 14, color: txtPri }}>{person.username}</p>
+        <p style={{ fontSize: 12, color: txtMut }}>Lv.{person.level ?? 1} · {person.country || 'Unknown'}</p>
+      </div>
+      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>{actions}</div>
+    </div>
+  )
+})
+
+const IconBtn = memo(function IconBtn({ onClick, icon, colorOn, bgOn }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: 36, height: 36, borderRadius: 10, border: 'none', cursor: 'pointer',
+        background: bgOn, color: colorOn,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'opacity 0.15s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.opacity = '0.8' }}
+      onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
+    >{icon}</button>
+  )
+})
+
+// Portrait friend card — visually distinct from Library game cards.
+// Module-scope + memo: rendered once per friend in a grid, so keeping a
+// stable component identity (instead of redefining it inline on every
+// FriendsPage render) avoids rebuilding every card's DOM on each keystroke,
+// resize, or tab switch.
+const FriendCard = memo(function FriendCard({ friend, active, isDark, bgCard, borderClr, txtPri, txtMut, txtSec, onChat, onBlock, onRemove }) {
+  const color  = avatarColor(friend.username)
+  const online = friend.online
+
+  return (
+    <div
+      style={{
+        background: bgCard,
+        border: `1px solid ${active ? ACCENT.primary : borderClr}`,
+        borderRadius: 20, overflow: 'hidden',
+        boxShadow: active
+          ? `0 0 0 1px ${ACCENT.primary}50, 0 6px 18px ${ACCENT.primary}22`
+          : isDark ? 'none' : '0 2px 12px rgba(0,0,0,0.06)',
+        transition: 'transform 0.18s, box-shadow 0.18s',
+        cursor: 'default',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.transform = 'translateY(-3px)'
+        e.currentTarget.style.boxShadow = active
+          ? `0 0 0 1px ${ACCENT.primary}50, 0 10px 24px ${ACCENT.primary}28`
+          : isDark ? `0 16px 40px rgba(0,0,0,0.4)` : '0 12px 32px rgba(0,0,0,0.1)'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.transform = 'none'
+        e.currentTarget.style.boxShadow = active
+          ? `0 0 0 1px ${ACCENT.primary}50, 0 6px 18px ${ACCENT.primary}22`
+          : isDark ? 'none' : '0 2px 12px rgba(0,0,0,0.06)'
+      }}
+    >
+      {/* Colored banner — shows the friend's actual cover photo when they have one */}
+      <div style={{
+        height: 120,
+        background: `linear-gradient(135deg, ${color}60 0%, ${color}20 60%, transparent 100%)`,
+        backgroundColor: isDark ? '#1a1a2e' : '#f8f6ff',
+        position: 'relative',
+      }}>
+        {friend.banner_url && (
+          <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+            <img
+              src={friend.banner_url}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          </div>
+        )}
+        {/* Online ring + avatar */}
+        <div style={{
+          position: 'absolute', bottom: -26, left: '50%', transform: 'translateX(-50%)',
+          padding: 3,
+          borderRadius: 18,
+          background: online
+            ? `linear-gradient(135deg, #22c55e, #16a34a)`
+            : isDark ? '#2a2a3f' : '#e2e8f0',
+        }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 14,
+            background: color,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontWeight: 800, fontSize: 22,
+            border: `3px solid ${bgCard}`,
+          }}>
+            {friend.avatar_url
+              ? <img src={friend.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 11 }} />
+              : friend.username?.[0]?.toUpperCase()
+            }
+          </div>
+        </div>
+      </div>
+
+      {/* Card body */}
+      <div style={{ padding: '36px 16px 16px', textAlign: 'center' }}>
+        <p style={{ fontWeight: 800, fontSize: 15, color: txtPri, marginBottom: 6 }}>
+          {friend.username}
+        </p>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
+          <span style={{
+            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
+            background: `${ACCENT.primary}18`, color: ACCENT.primary,
+          }}>Lv.{friend.level ?? 1}</span>
+          {friend.country && <span style={{ fontSize: 11, color: txtMut }}>{friend.country}</span>}
+        </div>
+
+        <p style={{ fontSize: 12, color: txtSec, lineHeight: 1.5, marginBottom: 14, minHeight: 36 }}>
+          {friend.bio || 'No bio yet'}
+        </p>
+
+        {/* Status chip */}
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '4px 12px', borderRadius: 99, marginBottom: 14,
+          background: online ? 'rgba(34,197,94,0.1)' : isDark ? 'rgba(255,255,255,0.05)' : '#f3f4f6',
+          color: online ? '#22c55e' : txtMut, fontSize: 11, fontWeight: 600,
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: online ? '#22c55e' : txtMut }} />
+          {online ? 'Online now' : 'Offline'}
+        </div>
+
+        {/* Buttons */}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button
+            onClick={() => onChat(active ? null : friend)}
+            style={{
+              flex: 1, minWidth: 0, padding: '8px 4px', borderRadius: 10, border: 'none',
+              background: active ? ACCENT.primary : `${ACCENT.primary}18`,
+              color: active ? '#fff' : ACCENT.primary,
+              fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              boxShadow: active ? `0 4px 16px ${ACCENT.primary}40` : 'none',
+              transition: 'all 0.15s',
+            }}
+          >
+            <MessageCircle size={13} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
+              {active ? 'Chatting…' : 'Message'}
+            </span>
+          </button>
+          <button
+            onClick={() => onBlock(friend)}
+            title="Block"
+            style={{
+              padding: '8px 9px', borderRadius: 10, cursor: 'pointer',
+              background: 'rgba(239,68,68,0.08)',
+              border: `1px solid ${borderClr}`,
+              color: '#ef4444', display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; e.currentTarget.style.borderColor = borderClr }}
+          >
+            <Ban size={14} />
+          </button>
+          <button
+            onClick={() => onRemove(friend)}
+            title="Remove"
+            style={{
+              padding: '8px 9px', borderRadius: 10, cursor: 'pointer',
+              background: 'transparent',
+              border: `1px solid ${borderClr}`,
+              color: txtMut, display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
+            onMouseLeave={e => { e.currentTarget.style.color = txtMut; e.currentTarget.style.borderColor = borderClr; e.currentTarget.style.background = 'transparent' }}
+          >
+            <UserX size={14} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// Confirmation modal for remove / block / decline. Renders nothing when
+// there's no pending action.
+const ConfirmDialog = memo(function ConfirmDialog({ confirm, onCancel, bgCard, borderClr, txtPri, txtSec }) {
+  if (!confirm) return null
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: 'rgba(6,6,12,0.6)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: bgCard, border: `1px solid ${borderClr}`, borderRadius: 20,
+          padding: '28px 26px', maxWidth: 380, width: '100%',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+        }}
+      >
+        <div style={{
+          width: 44, height: 44, borderRadius: 12,
+          background: confirm.danger ? 'rgba(239,68,68,0.14)' : `${ACCENT.primary}18`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
+        }}>
+          <AlertTriangle size={22} style={{ color: confirm.danger ? '#ef4444' : ACCENT.primary }} />
+        </div>
+        <h3 style={{ fontSize: 17, fontWeight: 800, color: txtPri, marginBottom: 8 }}>{confirm.title}</h3>
+        <p style={{ fontSize: 13, color: txtSec, lineHeight: 1.6, marginBottom: 22 }}>{confirm.message}</p>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button
+            onClick={onCancel}
+            style={{
+              flex: 1, padding: '10px 0', borderRadius: 10,
+              border: `1px solid ${borderClr}`, background: 'transparent',
+              color: txtPri, fontWeight: 700, fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => { confirm.onConfirm(); onCancel() }}
+            style={{
+              flex: 1, padding: '10px 0', borderRadius: 10, border: 'none',
+              background: confirm.danger ? '#ef4444' : ACCENT.primary,
+              color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer',
+            }}
+          >
+            {confirm.confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+})
+
+// Add Friend popup — live username search + send request, opened from
+// the top "Add Friend" button. Closing it clears the search state.
+const AddFriendModal = memo(function AddFriendModal({
+  open, onClose, searchQ, onSearchChange, searching, searchResults, sentTo, sending, onSendRequest,
+  isDark, bgCard, borderClr, bgInput, txtPri, txtMut, txtSec,
+}) {
+  if (!open) return null
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: 'rgba(6,6,12,0.6)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: bgCard, border: `1px solid ${borderClr}`, borderRadius: 20,
+          padding: 24, maxWidth: 460, width: '100%', maxHeight: '80vh',
+          display: 'flex', flexDirection: 'column', gap: 14,
+          boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 style={{ fontSize: 17, fontWeight: 800, color: txtPri }}>Add Friend</h3>
+          <button
+            onClick={onClose}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: txtMut, display: 'flex' }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div style={{ position: 'relative' }}>
+          <Search size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />
+          <input
+            autoFocus
+            value={searchQ}
+            onChange={e => onSearchChange(e.target.value)}
+            placeholder="Search by username…"
+            style={{
+              width: '100%', paddingLeft: 42, paddingRight: 42, paddingTop: 12, paddingBottom: 12,
+              borderRadius: 12, border: `1.5px solid ${borderClr}`,
+              fontSize: 14, background: bgInput, color: txtPri,
+              outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',
+            }}
+            onFocus={e => { e.target.style.borderColor = ACCENT.primary }}
+            onBlur={e => { e.target.style.borderColor = borderClr }}
+          />
+          {searching && <Loader2 size={15} className="animate-spin" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />}
+        </div>
+
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 140 }}>
+          {searchQ && !searching && searchResults.length === 0 && (
+            <p style={{ textAlign: 'center', padding: '32px 0', color: txtSec, fontWeight: 600 }}>
+              No users found for "{searchQ}"
+            </p>
+          )}
+
+          {searchResults.map(u => {
+            const requested = sentTo.has(u.id)
+            return (
+              <PersonRow key={u.id} person={u} bgCard={bgCard} borderClr={borderClr} txtPri={txtPri} txtMut={txtMut} actions={
+                <button
+                  onClick={() => !requested && onSendRequest(u.id)}
+                  disabled={sending[u.id] || requested}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '8px 16px', borderRadius: 10, border: 'none',
+                    background: requested
+                      ? (isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6')
+                      : `linear-gradient(135deg, ${ACCENT.primary}, #8b5cf6)`,
+                    color: requested ? txtSec : '#fff', fontSize: 13, fontWeight: 700,
+                    cursor: (sending[u.id] || requested) ? 'not-allowed' : 'pointer',
+                    opacity: sending[u.id] ? 0.6 : 1, transition: 'opacity 0.15s',
+                  }}
+                >
+                  {sending[u.id]
+                    ? <><Loader2 size={13} className="animate-spin" /> Sending…</>
+                    : requested
+                      ? <><Check size={13} /> Requested</>
+                      : <><UserPlus size={13} /> Add</>}
+                </button>
+              } />
+            )
+          })}
+
+          {!searchQ && (
+            <div style={{ textAlign: 'center', padding: '40px 0' }}>
+              <Search size={40} style={{ margin: '0 auto 12px', color: txtMut, display: 'block' }} />
+              <p style={{ fontWeight: 800, color: txtPri, fontSize: 15, marginBottom: 6 }}>Find your gaming squad</p>
+              <p style={{ color: txtSec, fontSize: 13 }}>Type a username above to search</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+})
 
 export default function FriendsPage() {
   const { dark: isDark } = useTheme()
@@ -66,28 +545,30 @@ export default function FriendsPage() {
   const txtSec    = isDark ? '#8c8aaa'               : '#6b7280'
   const txtMut    = isDark ? '#504e6a'               : '#a0a0b0'
 
-  // ── responsive chat-open push ────────────────────────────
+  // ── responsive layout (combined, rAF-throttled resize listener) ──
   // DMChatPanel is 384px wide at >=1024px; below that it's full-width, so
   // only push the page content when there's actually room for it.
   const [isWideEnough, setIsWideEnough] = useState(
     typeof window !== 'undefined' ? window.innerWidth >= 1024 : true
   )
-  useEffect(() => {
-    const onResize = () => setIsWideEnough(window.innerWidth >= 1024)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-  const chatPushPx = chatFriend && isWideEnough ? 384 : 0
-
-  // ── mobile layout detection (inline styles, no CSS breakpoints) ──
   const [isMobile, setIsMobile] = useState(
     typeof window !== 'undefined' ? window.innerWidth < 640 : false
   )
   useEffect(() => {
-    const onResize = () => setIsMobile(window.innerWidth < 640)
+    let rafId = null
+    const onResize = () => {
+      if (rafId) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        setIsWideEnough(window.innerWidth >= 1024)
+        setIsMobile(window.innerWidth < 640)
+      })
+    }
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    return () => { window.removeEventListener('resize', onResize); if (rafId) cancelAnimationFrame(rafId) }
   }, [])
+  const chatPushPx = chatFriend && isWideEnough ? 384 : 0
+
 
   // ── grid column count ─────────────────────────────────────
   // Measures the outer wrapper directly (ResizeObserver) so column count
@@ -298,467 +779,8 @@ export default function FriendsPage() {
   // SUB-COMPONENTS
   // ─────────────────────────────────────────────────────────
 
-  // Portrait friend card — visually distinct from Library game cards
-  const FriendCard = ({ friend }) => {
-    const color  = avatarColor(friend.username)
-    const active = chatFriend?.id === friend.id
-    const online = friend.online
+  // ─────────────────────────────────────────────────────────
 
-    return (
-      <div
-        style={{
-          background: bgCard,
-          border: `1px solid ${active ? ACCENT.primary : borderClr}`,
-          borderRadius: 20, overflow: 'hidden',
-          boxShadow: active
-            ? `0 0 0 1px ${ACCENT.primary}50, 0 6px 18px ${ACCENT.primary}22`
-            : isDark ? 'none' : '0 2px 12px rgba(0,0,0,0.06)',
-          transition: 'transform 0.18s, box-shadow 0.18s',
-          cursor: 'default',
-        }}
-        onMouseEnter={e => {
-          e.currentTarget.style.transform = 'translateY(-3px)'
-          e.currentTarget.style.boxShadow = active
-            ? `0 0 0 1px ${ACCENT.primary}50, 0 10px 24px ${ACCENT.primary}28`
-            : isDark ? `0 16px 40px rgba(0,0,0,0.4)` : '0 12px 32px rgba(0,0,0,0.1)'
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.transform = 'none'
-          e.currentTarget.style.boxShadow = active
-            ? `0 0 0 1px ${ACCENT.primary}50, 0 6px 18px ${ACCENT.primary}22`
-            : isDark ? 'none' : '0 2px 12px rgba(0,0,0,0.06)'
-        }}
-      >
-        {/* Colored banner — shows the friend's actual cover photo when they have one */}
-        <div style={{
-          height: 120,
-          background: `linear-gradient(135deg, ${color}60 0%, ${color}20 60%, transparent 100%)`,
-          backgroundColor: isDark ? '#1a1a2e' : '#f8f6ff',
-          position: 'relative',
-        }}>
-          {friend.banner_url && (
-            <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-              <img
-                src={friend.banner_url}
-                alt=""
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
-            </div>
-          )}
-          {/* Online ring + avatar */}
-          <div style={{
-            position: 'absolute', bottom: -26, left: '50%', transform: 'translateX(-50%)',
-            padding: 3,
-            borderRadius: 18,
-            background: online
-              ? `linear-gradient(135deg, #22c55e, #16a34a)`
-              : isDark ? '#2a2a3f' : '#e2e8f0',
-          }}>
-            <div style={{
-              width: 52, height: 52, borderRadius: 14,
-              background: color,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontWeight: 800, fontSize: 22,
-              border: `3px solid ${bgCard}`,
-            }}>
-              {friend.avatar_url
-                ? <img src={friend.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 11 }} />
-                : friend.username?.[0]?.toUpperCase()
-              }
-            </div>
-          </div>
-        </div>
-
-        {/* Card body */}
-        <div style={{ padding: '36px 16px 16px', textAlign: 'center' }}>
-          <p style={{ fontWeight: 800, fontSize: 15, color: txtPri, marginBottom: 6 }}>
-            {friend.username}
-          </p>
-
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>
-            <span style={{
-              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6,
-              background: `${ACCENT.primary}18`, color: ACCENT.primary,
-            }}>Lv.{friend.level ?? 1}</span>
-            {friend.country && <span style={{ fontSize: 11, color: txtMut }}>{friend.country}</span>}
-          </div>
-
-          <p style={{ fontSize: 12, color: txtSec, lineHeight: 1.5, marginBottom: 14, minHeight: 36 }}>
-            {friend.bio || 'No bio yet'}
-          </p>
-
-          {/* Status chip */}
-          <div style={{
-            display: 'inline-flex', alignItems: 'center', gap: 5,
-            padding: '4px 12px', borderRadius: 99, marginBottom: 14,
-            background: online ? 'rgba(34,197,94,0.1)' : isDark ? 'rgba(255,255,255,0.05)' : '#f3f4f6',
-            color: online ? '#22c55e' : txtMut, fontSize: 11, fontWeight: 600,
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: online ? '#22c55e' : txtMut }} />
-            {online ? 'Online now' : 'Offline'}
-          </div>
-
-          {/* Buttons */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => setChatFriend(active ? null : friend)}
-              style={{
-                flex: 1, minWidth: 0, padding: '8px 4px', borderRadius: 10, border: 'none',
-                background: active ? ACCENT.primary : `${ACCENT.primary}18`,
-                color: active ? '#fff' : ACCENT.primary,
-                fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                boxShadow: active ? `0 4px 16px ${ACCENT.primary}40` : 'none',
-                transition: 'all 0.15s',
-              }}
-            >
-              <MessageCircle size={13} style={{ flexShrink: 0 }} />
-              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>
-                {active ? 'Chatting…' : 'Message'}
-              </span>
-            </button>
-            <button
-              onClick={() => requestBlockUser(friend)}
-              title="Block"
-              style={{
-                padding: '8px 9px', borderRadius: 10, cursor: 'pointer',
-                background: 'rgba(239,68,68,0.08)',
-                border: `1px solid ${borderClr}`,
-                color: '#ef4444', display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.18)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.08)'; e.currentTarget.style.borderColor = borderClr }}
-            >
-              <Ban size={14} />
-            </button>
-            <button
-              onClick={() => requestRemoveFriend(friend)}
-              title="Remove"
-              style={{
-                padding: '8px 9px', borderRadius: 10, cursor: 'pointer',
-                background: 'transparent',
-                border: `1px solid ${borderClr}`,
-                color: txtMut, display: 'flex', alignItems: 'center', flexShrink: 0, transition: 'all 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; e.currentTarget.style.background = 'rgba(239,68,68,0.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.color = txtMut; e.currentTarget.style.borderColor = borderClr; e.currentTarget.style.background = 'transparent' }}
-            >
-              <UserX size={14} />
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Compact row used by Requests / Add Friend modal / Online / Offline / Blocked
-  const PersonRow = ({ person, actions }) => (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: 14,
-      padding: '12px 16px', borderRadius: 14,
-      background: bgCard, border: `1px solid ${borderClr}`,
-    }}>
-      <div style={{
-        width: 42, height: 42, borderRadius: 12, flexShrink: 0,
-        background: avatarColor(person.username),
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        color: '#fff', fontWeight: 800, fontSize: 18, overflow: 'hidden',
-      }}>
-        {person.avatar_url
-          ? <img src={person.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : person.username?.[0]?.toUpperCase()}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontWeight: 700, fontSize: 14, color: txtPri }}>{person.username}</p>
-        <p style={{ fontSize: 12, color: txtMut }}>Lv.{person.level ?? 1} · {person.country || 'Unknown'}</p>
-      </div>
-      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>{actions}</div>
-    </div>
-  )
-
-  const iconBtn = (onClick, icon, colorOn, bgOn) => (
-    <button
-      onClick={onClick}
-      style={{
-        width: 36, height: 36, borderRadius: 10, border: 'none', cursor: 'pointer',
-        background: bgOn, color: colorOn,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'opacity 0.15s',
-      }}
-      onMouseEnter={e => { e.currentTarget.style.opacity = '0.8' }}
-      onMouseLeave={e => { e.currentTarget.style.opacity = '1' }}
-    >{icon}</button>
-  )
-
-  // Confirmation modal for remove / block / decline. Renders nothing when
-  // there's no pending action.
-  const ConfirmDialog = () => {
-    if (!confirm) return null
-    return (
-      <div
-        onClick={() => setConfirm(null)}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 300,
-          background: 'rgba(6,6,12,0.6)', backdropFilter: 'blur(3px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-        }}
-      >
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            background: bgCard, border: `1px solid ${borderClr}`, borderRadius: 20,
-            padding: '28px 26px', maxWidth: 380, width: '100%',
-            boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
-          }}
-        >
-          <div style={{
-            width: 44, height: 44, borderRadius: 12,
-            background: confirm.danger ? 'rgba(239,68,68,0.14)' : `${ACCENT.primary}18`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16,
-          }}>
-            <AlertTriangle size={22} style={{ color: confirm.danger ? '#ef4444' : ACCENT.primary }} />
-          </div>
-          <h3 style={{ fontSize: 17, fontWeight: 800, color: txtPri, marginBottom: 8 }}>{confirm.title}</h3>
-          <p style={{ fontSize: 13, color: txtSec, lineHeight: 1.6, marginBottom: 22 }}>{confirm.message}</p>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              onClick={() => setConfirm(null)}
-              style={{
-                flex: 1, padding: '10px 0', borderRadius: 10,
-                border: `1px solid ${borderClr}`, background: 'transparent',
-                color: txtPri, fontWeight: 700, fontSize: 13, cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => { confirm.onConfirm(); setConfirm(null) }}
-              style={{
-                flex: 1, padding: '10px 0', borderRadius: 10, border: 'none',
-                background: confirm.danger ? '#ef4444' : ACCENT.primary,
-                color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer',
-              }}
-            >
-              {confirm.confirmLabel}
-            </button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Add Friend popup — live username search + send request, opened from
-  // the top "Add Friend" button. Closing it clears the search state.
-  const AddFriendModal = () => {
-    if (!addFriendOpen) return null
-    const close = () => { setAddFriendOpen(false); setSearchQ(''); setSearchResults([]) }
-    return (
-      <div
-        onClick={close}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 300,
-          background: 'rgba(6,6,12,0.6)', backdropFilter: 'blur(3px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-        }}
-      >
-        <div
-          onClick={e => e.stopPropagation()}
-          style={{
-            background: bgCard, border: `1px solid ${borderClr}`, borderRadius: 20,
-            padding: 24, maxWidth: 460, width: '100%', maxHeight: '80vh',
-            display: 'flex', flexDirection: 'column', gap: 14,
-            boxShadow: '0 24px 60px rgba(0,0,0,0.45)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <h3 style={{ fontSize: 17, fontWeight: 800, color: txtPri }}>Add Friend</h3>
-            <button
-              onClick={close}
-              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: txtMut, display: 'flex' }}
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div style={{ position: 'relative' }}>
-            <Search size={15} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />
-            <input
-              autoFocus
-              value={searchQ}
-              onChange={e => setSearchQ(e.target.value)}
-              placeholder="Search by username…"
-              style={{
-                width: '100%', paddingLeft: 42, paddingRight: 42, paddingTop: 12, paddingBottom: 12,
-                borderRadius: 12, border: `1.5px solid ${borderClr}`,
-                fontSize: 14, background: bgInput, color: txtPri,
-                outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.15s',
-              }}
-              onFocus={e => { e.target.style.borderColor = ACCENT.primary }}
-              onBlur={e => { e.target.style.borderColor = borderClr }}
-            />
-            {searching && <Loader2 size={15} className="animate-spin" style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: txtMut }} />}
-          </div>
-
-          <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 10, minHeight: 140 }}>
-            {searchQ && !searching && searchResults.length === 0 && (
-              <p style={{ textAlign: 'center', padding: '32px 0', color: txtSec, fontWeight: 600 }}>
-                No users found for "{searchQ}"
-              </p>
-            )}
-
-            {searchResults.map(u => {
-              const requested = sentTo.has(u.id)
-              return (
-                <PersonRow key={u.id} person={u} actions={
-                  <button
-                    onClick={() => !requested && sendRequest(u.id)}
-                    disabled={sending[u.id] || requested}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      padding: '8px 16px', borderRadius: 10, border: 'none',
-                      background: requested
-                        ? (isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6')
-                        : `linear-gradient(135deg, ${ACCENT.primary}, #8b5cf6)`,
-                      color: requested ? txtSec : '#fff', fontSize: 13, fontWeight: 700,
-                      cursor: (sending[u.id] || requested) ? 'not-allowed' : 'pointer',
-                      opacity: sending[u.id] ? 0.6 : 1, transition: 'opacity 0.15s',
-                    }}
-                  >
-                    {sending[u.id]
-                      ? <><Loader2 size={13} className="animate-spin" /> Sending…</>
-                      : requested
-                        ? <><Check size={13} /> Requested</>
-                        : <><UserPlus size={13} /> Add</>}
-                  </button>
-                } />
-              )
-            })}
-
-            {!searchQ && (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <Search size={40} style={{ margin: '0 auto 12px', color: txtMut, display: 'block' }} />
-                <p style={{ fontWeight: 800, color: txtPri, fontSize: 15, marginBottom: 6 }}>Find your gaming squad</p>
-                <p style={{ color: txtSec, fontSize: 13 }}>Type a username above to search</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Gotham-noir skyline watermark. Windows are seeded off position so the
-  // scene stays static per render instead of re-randomizing on repaint.
-  const BackgroundArt = () => {
-    // Deterministic pseudo-random window placement (no re-shuffle per render)
-    const seeded = (n) => { const x = Math.sin(n * 999) * 10000; return x - Math.floor(x) }
-    const windows = (buildingX, buildingY, w, h, seedBase) => {
-      const cols = Math.max(2, Math.floor(w / 14))
-      const rows = Math.max(2, Math.floor(h / 18))
-      const cells = []
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          if (seeded(seedBase + r * 31 + c * 7) > 0.62) {
-            cells.push(
-              <rect
-                key={`${seedBase}-${r}-${c}`}
-                x={buildingX + 6 + c * 14}
-                y={buildingY + 10 + r * 18}
-                width="5" height="7"
-                fill={ACCENT.primary}
-                opacity={isDark ? 0.8 : 0.5}
-              />
-            )
-          }
-        }
-      }
-      return cells
-    }
-
-    const backBuildings = [
-      [0, 780, 90, 120], [100, 820, 70, 80], [180, 760, 60, 140], [250, 800, 100, 100],
-      [360, 740, 50, 160], [420, 810, 90, 90], [520, 770, 60, 130], [590, 800, 110, 100],
-      [710, 750, 60, 150], [780, 820, 80, 80], [870, 790, 100, 110], [980, 760, 60, 140],
-      [1050, 810, 90, 90], [1150, 780, 70, 120], [1230, 820, 100, 80], [1340, 750, 60, 150],
-    ]
-    const frontBuildings = [
-      [-10, 830, 80, 220], [70, 870, 50, 180], [130, 800, 70, 250], [210, 860, 90, 190],
-      [310, 780, 55, 270], [375, 850, 100, 200], [485, 810, 60, 240], [555, 870, 85, 180],
-      [650, 790, 65, 260], [725, 840, 110, 210], [845, 800, 60, 250], [915, 860, 90, 190],
-      [1015, 780, 55, 270], [1080, 850, 100, 200], [1190, 810, 65, 240], [1265, 870, 90, 180],
-      [1365, 800, 45, 250],
-    ]
-
-    return (
-      <div
-        aria-hidden="true"
-        style={{ position: 'fixed', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}
-      >
-        <svg viewBox="0 0 1400 1000" preserveAspectRatio="xMidYMax slice" style={{ width: '100%', height: '100%' }}>
-          <defs>
-            <radialGradient id="fp-spot" cx="76%" cy="16%" r="46%">
-              <stop offset="0%" stopColor={ACCENT.primary} stopOpacity={isDark ? 0.55 : 0.25} />
-              <stop offset="55%" stopColor={ACCENT.primary} stopOpacity={isDark ? 0.18 : 0.08} />
-              <stop offset="100%" stopColor={ACCENT.primary} stopOpacity="0" />
-            </radialGradient>
-            <linearGradient id="fp-fog" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={bgPage} stopOpacity="0" />
-              <stop offset="100%" stopColor={bgPage} stopOpacity={isDark ? 0.9 : 0.75} />
-            </linearGradient>
-            <linearGradient id="fp-top-fade" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={bgPage} stopOpacity="1" />
-              <stop offset="35%" stopColor={bgPage} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-
-          {/* spotlight glow */}
-          <circle cx="1064" cy="160" r="440" fill="url(#fp-spot)" />
-          <line x1="1064" y1="160" x2="640" y2="1000" stroke={ACCENT.primary} strokeOpacity={isDark ? 0.10 : 0.05} strokeWidth="90" />
-          <line x1="1064" y1="160" x2="1360" y2="1000" stroke={ACCENT.primary} strokeOpacity={isDark ? 0.10 : 0.05} strokeWidth="90" />
-
-          {/* bat silhouette, sitting inside the spotlight */}
-          <g transform="translate(1064,150) scale(2.1)" fill={isDark ? '#0b0b14' : '#1b1230'} opacity={isDark ? 0.75 : 0.45}>
-            <path d="M0,-6
-              C-6,-16 -18,-20 -26,-14
-              C-34,-22 -48,-20 -52,-10
-              C-70,-16 -96,-6 -108,10
-              C-84,4 -66,6 -54,14
-              C-64,20 -78,34 -80,50
-              C-60,38 -42,32 -30,32
-              C-34,40 -32,50 -24,54
-              C-20,42 -12,34 -2,32
-              L0,30 L2,32
-              C12,34 20,42 24,54
-              C32,50 34,40 30,32
-              C42,32 60,38 80,50
-              C78,34 64,20 54,14
-              C66,6 84,4 108,10
-              C96,-6 70,-16 52,-10
-              C48,-20 34,-22 26,-14
-              C18,-20 6,-16 0,-6 Z" />
-          </g>
-
-          {/* far skyline */}
-          <g fill={isDark ? '#1a1830' : '#c9c6dc'} opacity={isDark ? 0.55 : 0.5}>
-            {backBuildings.map(([x, y, w, h], i) => <rect key={i} x={x} y={y} width={w} height={h} />)}
-          </g>
-
-          {/* near skyline with lit windows */}
-          <g>
-            {frontBuildings.map(([x, y, w, h], i) => (
-              <g key={i}>
-                <rect x={x} y={y} width={w} height={h} fill={isDark ? '#100e1c' : '#8f8aac'} opacity={isDark ? 0.85 : 0.4} />
-                {windows(x, y, w, h, i + 1)}
-              </g>
-            ))}
-          </g>
-
-          {/* ground fog + top fade so the art blends into the page rather than hard-cutting */}
-          <rect x="0" y="700" width="1400" height="300" fill="url(#fp-fog)" />
-          <rect x="0" y="0" width="1400" height="260" fill="url(#fp-top-fade)" />
-        </svg>
-      </div>
-    )
-  }
 
   // ── loading ───────────────────────────────────────────────
   if (loading) return (
@@ -785,7 +807,7 @@ export default function FriendsPage() {
         .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
-      <BackgroundArt />
+      <BackgroundArt isDark={isDark} bgPage={bgPage} />
 
       <div
         className="animate-fade-in"
@@ -935,7 +957,22 @@ export default function FriendsPage() {
                 <p style={{ color: txtSec }}>Use "Add Friend" to grow your squad</p>
               </div>
             : <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : `repeat(${gridCols}, minmax(${CARD_MIN_WIDTH}px, 1fr))`, gap: isMobile ? 12 : 20, width: '100%', maxWidth: '100%' }}>
-                {filteredFriends.map(f => <FriendCard key={f.id} friend={f} />)}
+                {filteredFriends.map(f => (
+                  <FriendCard
+                    key={f.id}
+                    friend={f}
+                    active={chatFriend?.id === f.id}
+                    isDark={isDark}
+                    bgCard={bgCard}
+                    borderClr={borderClr}
+                    txtPri={txtPri}
+                    txtMut={txtMut}
+                    txtSec={txtSec}
+                    onChat={setChatFriend}
+                    onBlock={requestBlockUser}
+                    onRemove={requestRemoveFriend}
+                  />
+                ))}
               </div>
         )}
 
@@ -949,9 +986,9 @@ export default function FriendsPage() {
                   <p style={{ color: txtSec, fontSize: 13 }}>When someone adds you, they'll appear here</p>
                 </div>
               : requests.map(req => (
-                  <PersonRow key={req.id} person={req.requester} actions={<>
-                    {iconBtn(() => acceptRequest(req),  <Check size={16} />, '#10b981', 'rgba(16,185,129,0.14)')}
-                    {iconBtn(() => requestDeclineRequest(req), <X size={16} />, txtSec, isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6')}
+                  <PersonRow key={req.id} person={req.requester} bgCard={bgCard} borderClr={borderClr} txtPri={txtPri} txtMut={txtMut} actions={<>
+                    <IconBtn onClick={() => acceptRequest(req)} icon={<Check size={16} />} colorOn="#10b981" bgOn="rgba(16,185,129,0.14)" />
+                    <IconBtn onClick={() => requestDeclineRequest(req)} icon={<X size={16} />} colorOn={txtSec} bgOn={isDark ? 'rgba(255,255,255,0.06)' : '#f3f4f6'} />
                   </>} />
                 ))
             }
@@ -1047,7 +1084,7 @@ export default function FriendsPage() {
               </div>
             : <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxWidth: 540 }}>
                 {blocked.map(u => (
-                  <PersonRow key={u.id} person={u} actions={
+                  <PersonRow key={u.id} person={u} bgCard={bgCard} borderClr={borderClr} txtPri={txtPri} txtMut={txtMut} actions={
                     <button
                       onClick={() => unblockUser(u.id, u.username)}
                       style={{
@@ -1079,8 +1116,24 @@ export default function FriendsPage() {
         />
       )}
 
-      <ConfirmDialog />
-      <AddFriendModal />
+      <ConfirmDialog
+        confirm={confirm}
+        onCancel={() => setConfirm(null)}
+        bgCard={bgCard} borderClr={borderClr} txtPri={txtPri} txtSec={txtSec}
+      />
+      <AddFriendModal
+        open={addFriendOpen}
+        onClose={() => { setAddFriendOpen(false); setSearchQ(''); setSearchResults([]) }}
+        searchQ={searchQ}
+        onSearchChange={setSearchQ}
+        searching={searching}
+        searchResults={searchResults}
+        sentTo={sentTo}
+        sending={sending}
+        onSendRequest={sendRequest}
+        isDark={isDark} bgCard={bgCard} borderClr={borderClr} bgInput={bgInput}
+        txtPri={txtPri} txtMut={txtMut} txtSec={txtSec}
+      />
     </div>
   )
 }

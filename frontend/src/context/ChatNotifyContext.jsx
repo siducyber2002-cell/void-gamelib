@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { MessageCircle, UserPlus, Users } from 'lucide-react'
@@ -258,8 +258,18 @@ export function ChatNotifyProvider({ children }) {
     // far more often than an actual login/logout.
   }, [token, userId, navigate])
 
+  // Without this, every render of ChatNotifyProvider (e.g. any time the
+  // *parent* re-renders, unrelated to chat) handed out a brand-new object
+  // reference here — which forces every component that calls
+  // useChatNotify() to re-render too, even though activeChatFriendId is
+  // the only piece of state involved and it rarely changes.
+  const value = useMemo(
+    () => ({ activeChatFriendId, setActiveChatFriendId }),
+    [activeChatFriendId]
+  )
+
   return (
-    <ChatNotifyContext.Provider value={{ activeChatFriendId, setActiveChatFriendId }}>
+    <ChatNotifyContext.Provider value={value}>
       {children}
     </ChatNotifyContext.Provider>
   )

@@ -125,22 +125,33 @@ export default function NewsPage() {
     return () => { cancelled = true }
   }, [])
 
-  // Reset to page 1 and reload when tab or filter changes
+  // Reload when tab, date filter, or page changes. When the filter changes
+  // while not on page 1, we reset to page 1 without fetching here — the
+  // effect re-runs once `page` updates, so we fetch exactly once instead of
+  // firing one request for the stale page and a second for page 1.
+  const filterKey = `${tab}|${preset}|${customFrom}|${customTo}`
+  const prevFilterKey = useRef(filterKey)
   useEffect(() => {
-    setPage(1)
-    return loadNews(tab, getActiveDates(), 1)
-  }, [tab, preset, customFrom, customTo])
+    const filterChanged = prevFilterKey.current !== filterKey
+    prevFilterKey.current = filterKey
+    if (filterChanged && page !== 1) { setPage(1); return }
+    return loadNews(tab, getActiveDates(), filterChanged ? 1 : page)
+  }, [filterKey, page])
 
-  // Reload when page changes (without resetting to 1)
-  useEffect(() => {
-    return loadNews(tab, getActiveDates(), page)
-  }, [page])
+  // Keep the latest args in a ref so the interval effect doesn't need to
+  // depend on them — otherwise changing tab/page/dates tears down and
+  // restarts the 10-minute timer, so it could go a very long time without
+  // ever actually firing.
+  const latestArgs = useRef({ tab, dates: getActiveDates(), page })
+  latestArgs.current = { tab, dates: getActiveDates(), page }
 
-  // Auto-refresh
   useEffect(() => {
-    const id = setInterval(() => loadNews(tab, getActiveDates(), page, { force: true, silent: true }), REFRESH_INTERVAL)
+    const id = setInterval(() => {
+      const { tab: t, dates: d, page: p } = latestArgs.current
+      loadNews(t, d, p, { force: true, silent: true })
+    }, REFRESH_INTERVAL)
     return () => clearInterval(id)
-  }, [tab, preset, customFrom, customTo, page])
+  }, [loadNews])
 
   // Tick timeAgo labels every minute
   useEffect(() => {

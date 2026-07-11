@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
 import {
   Search, SlidersHorizontal, Star, X, Loader2, Clock, Monitor,
   ChevronLeft, ChevronRight, Compass, Plus, Check, Calendar, Tag,
@@ -62,20 +62,19 @@ function GameDetailModal({ gameId, onClose, isInLibrary, onToggleLibrary }) {
   const inLibrary = details ? isInLibrary(details) : false
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     setLoading(true)
     setError(false)
     setDetails(null)
-    fetch(`https://api.rawg.io/api/games/${gameId}?key=${RAWG_KEY}`)
+    fetch(`https://api.rawg.io/api/games/${gameId}?key=${RAWG_KEY}`, { signal: controller.signal })
       .then(r => r.json())
       .then(data => {
-        if (cancelled) return
         if (data.detail) { setError(true); setLoading(false); return }
         setDetails(data)
         setLoading(false)
       })
-      .catch(() => { if (!cancelled) { setError(true); setLoading(false) } })
-    return () => { cancelled = true }
+      .catch(err => { if (err.name !== 'AbortError') { setError(true); setLoading(false) } })
+    return () => controller.abort()
   }, [gameId])
 
   useEffect(() => {
@@ -259,7 +258,11 @@ function GameDetailModal({ gameId, onClose, isInLibrary, onToggleLibrary }) {
 }
 
 // ── Game Card ─────────────────────────────────────────────────────────────────
-function GameCard({ game, accentColor, onOpenDetail, inLibrary, onToggleLibrary, cardBg, cardBorder, cardShadow, hoverShadow, textPrimary, textSub }) {
+// Wrapped in memo: ExplorePage re-renders on every keystroke in the search box
+// and on the 5-min shuffle tick. Without memo, every one of the 20 visible
+// cards would fully re-render each time, which was the main source of input
+// lag/stutter while typing.
+const GameCard = memo(function GameCard({ game, accentColor, onOpenDetail, inLibrary, onToggleLibrary, cardBg, cardBorder, cardShadow, hoverShadow, textPrimary, textSub }) {
   const [imgError, setImgError] = useState(false)
   const [hovered, setHovered]   = useState(false)
 
@@ -347,7 +350,35 @@ function GameCard({ game, accentColor, onOpenDetail, inLibrary, onToggleLibrary,
       </div>
     </div>
   )
-}
+})
+
+// ── Filter Pill Group ────────────────────────────────────────────────────────
+// Previously this was declared *inside* ExplorePage's render, so it was a
+// brand-new component type on every render — React would tear down and
+// rebuild the whole filter panel's DOM every time any page state changed
+// (typing in search, shuffle tick, etc). Defining it at module scope fixes that.
+const FilterPill = memo(function FilterPill({ options, value, onSelect, label, accent, tabBarBg, textSub, cardBorder }) {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: accent }}>{label}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map(opt => (
+          <button
+            key={opt}
+            onClick={() => onSelect(opt)}
+            className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150"
+            style={value === opt
+              ? { background: accent, color: '#fff', boxShadow: `0 2px 8px ${accent}55` }
+              : { background: tabBarBg, color: textSub, border: `1px solid ${cardBorder}` }
+            }
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+})
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function ExplorePage() {
@@ -400,6 +431,7 @@ export default function ExplorePage() {
   }, [isInLibrary, addToLibrary, removeFromLibrary])
 
   const searchTimer = useRef(null)
+  useEffect(() => () => clearTimeout(searchTimer.current), [])
   const handleSearchInput = val => {
     setSearchInput(val)
     clearTimeout(searchTimer.current)
@@ -417,18 +449,17 @@ export default function ExplorePage() {
   }, [genre, platform, year, rating, sortBy, search, page])
 
   useEffect(() => {
-    let cancelled = false
+    const controller = new AbortController()
     setLoading(true)
-    fetch(buildUrl())
+    fetch(buildUrl(), { signal: controller.signal })
       .then(r => r.json())
       .then(data => {
-        if (cancelled) return
         setGames(data.results || [])
         setTotalCount(data.count || 0)
         setLoading(false)
       })
-      .catch(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .catch(err => { if (err.name !== 'AbortError') setLoading(false) })
+    return () => controller.abort()
   }, [buildUrl])
 
   useEffect(() => { setPage(1) }, [genre, platform, year, rating, sortBy, search])
@@ -464,27 +495,6 @@ export default function ExplorePage() {
   const textPrimary = isDark ? '#e8edf5' : '#0f172a'
   const textSub     = isDark ? '#8892a4' : '#64748b'
   const divider     = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)'
-
-  const FilterPill = ({ options, value, onChange, label }) => (
-    <div className="flex flex-col gap-2">
-      <span className="text-[10px] font-black uppercase tracking-[0.15em]" style={{ color: accent }}>{label}</span>
-      <div className="flex flex-wrap gap-1.5">
-        {options.map(opt => (
-          <button
-            key={opt}
-            onClick={() => { onChange(opt); setPage(1) }}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-150"
-            style={value === opt
-              ? { background: accent, color: '#fff', boxShadow: `0 2px 8px ${accent}55` }
-              : { background: tabBarBg, color: textSub, border: `1px solid ${cardBorder}` }
-            }
-          >
-            {opt}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
 
   return (
     <div
@@ -617,13 +627,17 @@ export default function ExplorePage() {
             className="rounded-2xl p-5 flex flex-col gap-5"
             style={{ background: panelBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}
           >
-            <FilterPill options={GENRES}    value={genre}    onChange={setGenre}    label="Genre" />
+            <FilterPill options={GENRES}    value={genre}    onSelect={opt => { setGenre(opt); setPage(1) }}    label="Genre"
+              accent={accent} tabBarBg={tabBarBg} textSub={textSub} cardBorder={cardBorder} />
             <div style={{ borderTop: `1px solid ${divider}` }} />
-            <FilterPill options={PLATFORMS} value={platform} onChange={setPlatform} label="Platform" />
+            <FilterPill options={PLATFORMS} value={platform} onSelect={opt => { setPlatform(opt); setPage(1) }} label="Platform"
+              accent={accent} tabBarBg={tabBarBg} textSub={textSub} cardBorder={cardBorder} />
             <div style={{ borderTop: `1px solid ${divider}` }} />
-            <FilterPill options={YEARS}     value={year}     onChange={setYear}     label="Year" />
+            <FilterPill options={YEARS}     value={year}     onSelect={opt => { setYear(opt); setPage(1) }}     label="Year"
+              accent={accent} tabBarBg={tabBarBg} textSub={textSub} cardBorder={cardBorder} />
             <div style={{ borderTop: `1px solid ${divider}` }} />
-            <FilterPill options={RATINGS}   value={rating}   onChange={setRating}   label="Min Metacritic" />
+            <FilterPill options={RATINGS}   value={rating}   onSelect={opt => { setRating(opt); setPage(1) }}   label="Min Metacritic"
+              accent={accent} tabBarBg={tabBarBg} textSub={textSub} cardBorder={cardBorder} />
           </div>
         )}
 

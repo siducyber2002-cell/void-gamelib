@@ -474,9 +474,11 @@ export default function BifrostTransition() {
           position: fixed; inset: 0; z-index: 999999;
           overflow: hidden;
           pointer-events: none;
+          contain: layout style paint;
         }
         .bf-stage {
           position: absolute;
+          will-change: transform;
         }
         .bf-stage.bf-shake {
           animation: bf-shake 260ms ease-in-out;
@@ -505,6 +507,8 @@ export default function BifrostTransition() {
           transition-property: transform, opacity;
           transition-timing-function: cubic-bezier(0.55, 0.06, 0.68, 0.19);
           will-change: transform, opacity;
+          contain: paint;
+          backface-visibility: hidden;
         }
         .bf-piece.bf-fall {
           transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.92);
@@ -516,16 +520,19 @@ export default function BifrostTransition() {
           position: absolute;
           left: ${impactXPct}%; top: ${impactYPct}%;
           width: 0; height: 0;
-          filter: drop-shadow(0 0 20px rgba(168,85,247,0.85)) drop-shadow(0 0 40px rgba(124,58,237,0.5));
+          filter: drop-shadow(0 0 26px rgba(147,80,240,0.7));
           transform: translate(-50%, -50%) translate(${ballVec.fx}px, ${ballVec.fy}px) scale(2.2);
           opacity: 0.9;
           animation: bf-ballThrow ${BALL_MS}ms cubic-bezier(0.16, 0.6, 0.2, 1) forwards;
+          will-change: transform, opacity;
+          backface-visibility: hidden;
         }
         .bf-ball-orb {
           position: absolute;
           left: -32px; top: -32px;
           overflow: visible;
           animation: bf-ballSpin 260ms linear infinite;
+          will-change: transform;
         }
         @keyframes bf-ballSpin {
           from { transform: rotate(0deg); }
@@ -549,6 +556,7 @@ export default function BifrostTransition() {
           background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(216,196,255,0.6) 40%, transparent 72%);
           opacity: 0;
           animation: bf-launchFlash 320ms ease-out forwards;
+          will-change: transform, opacity;
         }
         @keyframes bf-launchFlash {
           0%   { opacity: 0;   transform: translate(-50%, -50%) scale(0.15); }
@@ -567,8 +575,9 @@ export default function BifrostTransition() {
           transform-origin: 0% 50%;
           background: linear-gradient(90deg, rgba(255,255,255,0.95) 0%, rgba(224,196,255,0.85) 14%, rgba(168,85,247,0.5) 45%, rgba(124,58,237,0) 100%);
           border-radius: 999px;
-          filter: blur(2px) drop-shadow(0 0 12px rgba(168,85,247,0.85));
+          filter: blur(2px);
           animation: bf-cometTail ${BALL_MS}ms cubic-bezier(0.16, 0.6, 0.2, 1) forwards;
+          will-change: transform, opacity;
         }
         @keyframes bf-cometTail {
           0%   { transform: rotate(${tailAngle1}deg) scaleX(0);   opacity: 0;    }
@@ -585,9 +594,11 @@ export default function BifrostTransition() {
           position: absolute;
           left: ${KICK_X_PCT}%; top: ${KICK_Y_PCT}%;
           width: 0; height: 0;
-          filter: drop-shadow(0 0 16px rgba(168,85,247,0.7)) drop-shadow(0 0 34px rgba(124,58,237,0.4));
+          filter: drop-shadow(0 0 22px rgba(147,80,240,0.6));
           transform: translate(-50%, -50%) translate(${dropVec.fx}px, ${dropVec.fy}px) scale(1);
           animation: bf-ballDrop ${DROP_MS}ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          will-change: transform;
+          backface-visibility: hidden;
         }
         /* Starts moving IMMEDIATELY — no wind-up — covers most of the fall
            fast, then lands with a little squash-and-stretch bounce instead
@@ -607,9 +618,10 @@ export default function BifrostTransition() {
           position: absolute;
           left: ${KICK_X_PCT}%; top: ${KICK_Y_PCT}%;
           width: 0; height: 0;
-          filter: drop-shadow(0 0 16px rgba(168,85,247,0.7)) drop-shadow(0 0 34px rgba(124,58,237,0.4));
+          filter: drop-shadow(0 0 22px rgba(147,80,240,0.6));
           transform: translate(-50%, -50%) scale(1);
           animation: bf-ballIdle 900ms ease-in-out infinite;
+          will-change: transform;
         }
         @keyframes bf-ballIdle {
           0%, 100% { transform: translate(-50%, -50%) scale(1);    }
@@ -627,6 +639,7 @@ export default function BifrostTransition() {
           background: radial-gradient(circle, rgba(216,196,255,0.4) 0%, rgba(168,85,247,0.12) 45%, transparent 72%);
           opacity: 0;
           animation: bf-slowmoPulse 520ms ease-out forwards;
+          will-change: transform, opacity;
         }
         @keyframes bf-slowmoPulse {
           0%   { opacity: 0;   transform: translate(-50%, -50%) scale(0.2); }
@@ -640,9 +653,10 @@ export default function BifrostTransition() {
           position: absolute;
           left: ${KICK_X_PCT}%; top: ${KICK_Y_PCT}%;
           width: 0; height: 0;
-          filter: drop-shadow(0 0 16px rgba(168,85,247,0.7)) drop-shadow(0 0 34px rgba(124,58,237,0.4));
+          filter: drop-shadow(0 0 22px rgba(147,80,240,0.6));
           transform: translate(-50%, -50%) scale(1);
           animation: bf-ballAnticipate ${KICK_MS}ms cubic-bezier(0.45, 0, 0.4, 1) forwards;
+          will-change: transform;
         }
         @keyframes bf-ballAnticipate {
           0%   { transform: translate(-50%, -50%) scale(1);    }
@@ -663,9 +677,11 @@ export default function BifrostTransition() {
           left: -35px; top: -92px;
           overflow: visible;
           filter: drop-shadow(0 0 8px rgba(124,58,237,0.5));
+          will-change: transform;
         }
         .bm-torso, .bm-leg-kick-pivot, .bm-arm-back, .bm-arm-front, .bm-leg-plant {
           transform-box: view-box;
+          will-change: transform;
         }
         .bm-torso           { transform-origin: 35px 58px; }
         .bm-leg-kick-pivot   { transform-origin: 35px 58px; }
@@ -717,15 +733,16 @@ export default function BifrostTransition() {
           pointer-events: none;
           animation: bm-runIn ${ENTRANCE_MS}ms cubic-bezier(0.3, 0.1, 0.25, 1) forwards;
           animation-fill-mode: both;
+          will-change: transform, opacity;
         }
         .bf-hero-ghost-1 {
           opacity: 0.22;
-          filter: blur(3px) drop-shadow(0 0 6px rgba(168,85,247,0.5));
+          filter: blur(3px);
           animation-delay: 90ms;
         }
         .bf-hero-ghost-2 {
           opacity: 0.12;
-          filter: blur(5px) drop-shadow(0 0 6px rgba(168,85,247,0.4));
+          filter: blur(5px);
           animation-delay: 180ms;
         }
 
@@ -796,6 +813,7 @@ export default function BifrostTransition() {
         .bf-crater-dent {
           fill: rgba(0, 0, 0, 0.55);
           animation: bf-craterPop ${IMPACT_MS}ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+          will-change: transform, opacity;
         }
         .bf-crater-rim {
           fill: rgba(10, 4, 20, 0.75);
@@ -803,6 +821,7 @@ export default function BifrostTransition() {
           stroke-width: 1.5;
           filter: drop-shadow(0 0 10px rgba(124,58,237,0.55));
           animation: bf-craterPop ${IMPACT_MS}ms cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+          will-change: transform, opacity;
         }
         @keyframes bf-debrisBurst {
           0%   { transform: translate(-50%, -50%) translate(0, 0) rotate(0deg) scale(1); opacity: 1; }
@@ -817,6 +836,7 @@ export default function BifrostTransition() {
           animation-name: bf-debrisBurst;
           animation-timing-function: cubic-bezier(0.25, 0.46, 0.45, 0.94);
           animation-fill-mode: forwards;
+          will-change: transform, opacity;
         }
 
         @keyframes bf-crackBurst {
@@ -833,15 +853,24 @@ export default function BifrostTransition() {
           background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(216,196,255,0.55) 35%, transparent 70%);
           opacity: 0;
           animation: bf-crackBurst 420ms ease-out forwards;
+          will-change: transform, opacity;
         }
 
-        .bf-crack-svg { position: absolute; inset: 0; }
+        .bf-crack-svg { position: absolute; inset: 0; shape-rendering: optimizeSpeed; contain: strict; }
+        .bf-crack-glow {
+          fill: none;
+          stroke: rgba(216,196,255,0.55);
+          stroke-width: 4.5;
+          stroke-linecap: round;
+          stroke-dasharray: 1;
+          stroke-dashoffset: 1;
+          animation: bf-crackDraw ${CRACK_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
+        }
         .bf-crack-line {
           fill: none;
           stroke: rgba(255,255,255,0.9);
           stroke-width: 1.8;
           stroke-linecap: round;
-          filter: drop-shadow(0 0 3px rgba(216,196,255,0.85));
           stroke-dasharray: 1;
           stroke-dashoffset: 1;
           animation: bf-crackDraw ${CRACK_MS}ms cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
@@ -874,14 +903,15 @@ export default function BifrostTransition() {
 
         {showCracks && shatter && (
           <svg className="bf-crack-svg" width={width} height={height}>
-            {shatter.dividers.map((d, i) => (
-              <path
-                key={i}
-                className="bf-crack-line"
-                pathLength="1"
-                d={`M ${d.points[0].x} ${d.points[0].y} L ${d.points[1].x.toFixed(1)} ${d.points[1].y.toFixed(1)} L ${d.points[2].x.toFixed(1)} ${d.points[2].y.toFixed(1)}`}
-              />
-            ))}
+            {shatter.dividers.map((d, i) => {
+              const path = `M ${d.points[0].x} ${d.points[0].y} L ${d.points[1].x.toFixed(1)} ${d.points[1].y.toFixed(1)} L ${d.points[2].x.toFixed(1)} ${d.points[2].y.toFixed(1)}`
+              return (
+                <g key={i}>
+                  <path className="bf-crack-glow" pathLength="1" d={path} />
+                  <path className="bf-crack-line" pathLength="1" d={path} />
+                </g>
+              )
+            })}
           </svg>
         )}
 

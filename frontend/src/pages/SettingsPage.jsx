@@ -21,7 +21,7 @@ export default function SettingsPage() {
   const accentColor = ACCENTS?.[accent]?.primary || '#a855f7'
 
   const [pwForm, setPwForm] = useState({ current_password: '', new_password: '', confirm: '' })
-  const [showPw, setShowPw] = useState(false)
+  const [showPw, setShowPw] = useState({ current_password: false, new_password: false, confirm: false })
   const [saving, setSaving] = useState(false)
 
   // ── Delete account modal ──
@@ -158,7 +158,7 @@ export default function SettingsPage() {
                 </label>
                 <div className="relative">
                   <input
-                    type={showPw ? 'text' : 'password'}
+                    type={showPw[field] ? 'text' : 'password'}
                     required
                     value={pwForm[field]}
                     onChange={e => setPwForm({ ...pwForm, [field]: e.target.value })}
@@ -166,12 +166,10 @@ export default function SettingsPage() {
                     className="w-full px-4 py-3 rounded-xl outline-none transition-colors"
                     style={inputStyle}
                   />
-                  {field === 'current_password' && (
-                    <button type="button" onClick={() => setShowPw(!showPw)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2" style={{ color: textSub }}>
-                      {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  )}
+                  <button type="button" onClick={() => setShowPw({ ...showPw, [field]: !showPw[field] })}
+                    className="absolute right-4 top-1/2 -translate-y-1/2" style={{ color: textSub }}>
+                    {showPw[field] ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
                 </div>
               </div>
             ))}

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import { Eye, EyeOff, ChevronRight, BookOpen } from 'lucide-react'
-import { toPng } from 'html-to-image'
+import { toJpeg } from 'html-to-image'
 import { bifrostBus } from '../components/BifrostTransition'
 
 export default function LoginPage() {
@@ -79,7 +79,32 @@ export default function LoginPage() {
       setCapturing(true)
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
 
-      const image = await toPng(rootRef.current, { cacheBust: true, pixelRatio: 1 })
+      // This same image gets painted as a background-image on 8 separate
+      // overlay layers in BifrostTransition (the whole-page freeze plus all
+      // 7 falling shard pieces), so its size matters far more than a normal
+      // screenshot would: a full-resolution PNG here means the browser is
+      // decoding and re-rasterizing a multi-megabyte texture 8 times right
+      // as the shatter animation is trying to hit 60fps.
+      //   - toJpeg instead of toPng: this is an opaque photographic capture
+      //     of the whole page, not something needing lossless/alpha, so
+      //     JPEG's much smaller output decodes far faster with no visible
+      //     quality loss during a fast, motion-blurred shatter.
+      //   - canvasWidth cap: on large/hi-DPI desktop monitors the raw
+      //     capture can be huge; capping the long edge keeps the texture a
+      //     sane size without a visible drop in quality once it's on
+      //     screen mid-animation. Downscale only — never upscale.
+      const rawW = rootRect?.width || rootRef.current.clientWidth
+      const rawH = rootRect?.height || rootRef.current.clientHeight
+      const MAX_CAPTURE_W = 1600
+      const scale = Math.min(1, MAX_CAPTURE_W / rawW)
+
+      const image = await toJpeg(rootRef.current, {
+        cacheBust: true,
+        pixelRatio: 1,
+        quality: 0.85,
+        canvasWidth: Math.round(rawW * scale),
+        canvasHeight: Math.round(rawH * scale),
+      })
 
       // Freeze BEFORE restoring the live video. The overlay is what the
       // user looks at from here on, so the real page underneath needs to

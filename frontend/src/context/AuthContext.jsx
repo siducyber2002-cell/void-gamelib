@@ -1,8 +1,15 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
 const AuthContext = createContext(null)
+
+// This was previously set as a statement inside the component body, which
+// means it ran on EVERY render of AuthProvider — and since AuthProvider
+// wraps the whole app, that's every render triggered by any state change
+// anywhere under it. The value never changes at runtime, so it only needs
+// to run once, when the module loads.
+axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -11,9 +18,6 @@ export function AuthProvider({ children }) {
   const [streak, setStreak] = useState(null) // { current_streak, longest_streak }
   const [showStreakPopup, setShowStreakPopup] = useState(false)
 
-  // axios.defaults.baseURL = 'http://localhost:8000'
-  axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-
   // The backend's `streak_increased_today` flag stays true for the whole day
   // once the streak bumps — it's not a "just now" flag. checkStreak() gets
   // called on every mount AND every tab/app refocus (visibilitychange), so
@@ -21,7 +25,7 @@ export function AuthProvider({ children }) {
   // all day long, which is what was happening. We stamp the day + the
   // streak count we've already celebrated in localStorage, and only show
   // the popup if today's increase hasn't been shown yet.
-  const maybeShowStreakPopup = (currentStreak, increasedToday) => {
+  const maybeShowStreakPopup = useCallback((currentStreak, increasedToday) => {
     if (!increasedToday) return
     const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD, local calendar day
     const lastShown = localStorage.getItem('gl_streak_popup_shown')
@@ -29,9 +33,9 @@ export function AuthProvider({ children }) {
     if (lastShown === key) return // already celebrated this streak today
     localStorage.setItem('gl_streak_popup_shown', key)
     setShowStreakPopup(true)
-  }
+  }, [])
 
-  const checkStreak = async () => {
+  const checkStreak = useCallback(async () => {
     try {
       const res = await axios.get('/api/auth/streak')
       setStreak({
@@ -42,9 +46,9 @@ export function AuthProvider({ children }) {
     } catch {
       // silent — streak check should never break the app
     }
-  }
+  }, [maybeShowStreakPopup])
 
-  const dismissStreakPopup = () => setShowStreakPopup(false)
+  const dismissStreakPopup = useCallback(() => setShowStreakPopup(false), [])
 
   // Picks up after /api/auth/google/callback redirects back here. That's a
   // full-page navigation (Google → backend → here), not a fetch, so the
@@ -78,6 +82,17 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  const fetchMe = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/auth/me')
+      setUser(res.data)
+    } catch {
+      logout() // eslint-disable-line no-use-before-define
+    } finally {
+      setLoading(false)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (token) {
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
@@ -86,7 +101,7 @@ export function AuthProvider({ children }) {
     } else {
       setLoading(false)
     }
-  }, [token])
+  }, [token, fetchMe, checkStreak])
 
   // Covers "resumed the app" — tab/window regains focus (e.g. mobile app foregrounded,
   // browser tab switched back to). Safe to call repeatedly; backend is idempotent per day.
@@ -97,20 +112,9 @@ export function AuthProvider({ children }) {
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [token])
+  }, [token, checkStreak])
 
-  const fetchMe = async () => {
-    try {
-      const res = await axios.get('/api/auth/me')
-      setUser(res.data)
-    } catch {
-      logout()
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     const form = new URLSearchParams()
     form.append('username', email)
     form.append('password', password)
@@ -130,14 +134,14 @@ export function AuthProvider({ children }) {
     }
 
     return res.data
-  }
+  }, [fetchMe, maybeShowStreakPopup])
 
-  const register = async (data) => {
+  const register = useCallback(async (data) => {
     const res = await axios.post('/api/auth/register', data)
     return res.data
-  }
+  }, [])
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('gl_token')
     localStorage.removeItem('gl_streak_popup_shown')
     delete axios.defaults.headers.common['Authorization']
@@ -145,37 +149,48 @@ export function AuthProvider({ children }) {
     setUser(null)
     setStreak(null)
     setShowStreakPopup(false)
-  }
+  }, [])
 
-  const updateProfile = async (data) => {
+  const updateProfile = useCallback(async (data) => {
     const res = await axios.put('/api/auth/me', data)
     setUser(res.data)
     return res.data
-  }
+  }, [])
 
   // Merge partial fields (e.g. { avatar_url } or { banner_url }) into the
   // shared user object without a full refetch — used after image upload/removal
   // so every component reading `user` (sidebar, friends page, etc.) updates instantly.
-  const updateUserFields = (fields) => {
+  const updateUserFields = useCallback((fields) => {
     setUser(prev => (prev ? { ...prev, ...fields } : prev))
-  }
+  }, [])
 
-  const changePassword = async (data) => {
+  const changePassword = useCallback(async (data) => {
     const res = await axios.post('/api/auth/change-password', data)
     return res.data
-  }
+  }, [])
 
-  const deleteAccount = async (password) => {
+  const deleteAccount = useCallback(async (password) => {
     const res = await axios.delete('/api/auth/me', { data: { password } })
     logout()
     return res.data
-  }
+  }, [logout])
+
+  // Every field/function below is now referentially stable (useCallback) or
+  // a primitive/plain object, so this value only produces a new reference
+  // when something in it actually changed — instead of every render of
+  // AuthProvider (which, unmemoized, cascades a re-render into every
+  // component in the app that calls useAuth(), since AuthProvider sits at
+  // the root).
+  const value = useMemo(() => ({
+    user, token, loading, login, register, logout, updateProfile, updateUserFields, changePassword, deleteAccount,
+    streak, showStreakPopup, dismissStreakPopup, checkStreak,
+  }), [
+    user, token, loading, login, register, logout, updateProfile, updateUserFields, changePassword, deleteAccount,
+    streak, showStreakPopup, dismissStreakPopup, checkStreak,
+  ])
 
   return (
-    <AuthContext.Provider value={{
-      user, token, loading, login, register, logout, updateProfile, updateUserFields, changePassword, deleteAccount,
-      streak, showStreakPopup, dismissStreakPopup, checkStreak,
-    }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )

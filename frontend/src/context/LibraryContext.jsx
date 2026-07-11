@@ -1,8 +1,30 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import axios from 'axios'
 import { useAuth } from './AuthContext'
 
 const LibraryContext = createContext(null)
+
+// Pure function, no dependency on component state/props — hoisted out of
+// the component so it isn't recreated (a fresh function reference + closure)
+// on every render. It's called from inside fetchLibrary/addToLibrary, which
+// happen often, so this avoids needless garbage-collector churn.
+function normalizeEntry(entry) {
+  return {
+    id:       entry.id,
+    gameId:   entry.game_id,
+    slug:     entry.game?.title?.toLowerCase().replace(/\s+/g, '-') || '',
+    rawgId:   null,
+    title:    entry.game?.title    || 'Unknown',
+    genre:    entry.game?.genre    || 'Unknown',
+    rating:   entry.game?.rating   || 0,
+    cover:    entry.game?.cover_url || null,
+    accent:   '#6366f1',
+    status:   entry.status,
+    fav:      entry.is_favorite,
+    hours:    entry.hours_played,
+    added_at: entry.added_at,
+  }
+}
 
 export function LibraryProvider({ children }) {
   const [library, setLibrary] = useState([])
@@ -11,24 +33,6 @@ export function LibraryProvider({ children }) {
   const libraryRef  = useRef([])
   const fetchingRef = useRef(false)
   const { user }    = useAuth()
-
-  function normalizeEntry(entry) {
-    return {
-      id:       entry.id,
-      gameId:   entry.game_id,
-      slug:     entry.game?.title?.toLowerCase().replace(/\s+/g, '-') || '',
-      rawgId:   null,
-      title:    entry.game?.title    || 'Unknown',
-      genre:    entry.game?.genre    || 'Unknown',
-      rating:   entry.game?.rating   || 0,
-      cover:    entry.game?.cover_url || null,
-      accent:   '#6366f1',
-      status:   entry.status,
-      fav:      entry.is_favorite,
-      hours:    entry.hours_played,
-      added_at: entry.added_at,
-    }
-  }
 
   const fetchLibrary = useCallback(async () => {
     if (fetchingRef.current) return
@@ -193,8 +197,16 @@ export function LibraryProvider({ children }) {
     }
   }, [])
 
+  // Functions are already stable via useCallback; memoizing the value
+  // object itself means components consuming useLibrary() (game cards,
+  // sidebar counts, etc.) only re-render when library/loading actually
+  // change, not on every LibraryProvider render.
+  const value = useMemo(() => ({
+    library, loading, isInLibrary, addToLibrary, removeFromLibrary, toggleFav, updateStatus,
+  }), [library, loading, isInLibrary, addToLibrary, removeFromLibrary, toggleFav, updateStatus])
+
   return (
-    <LibraryContext.Provider value={{ library, loading, isInLibrary, addToLibrary, removeFromLibrary, toggleFav, updateStatus }}>
+    <LibraryContext.Provider value={value}>
       {children}
     </LibraryContext.Provider>
   )

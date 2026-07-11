@@ -381,11 +381,17 @@ function LibraryDonut({ items, total, isDark, textPrimary, textSub }) {
 function ActivityAreaChart({ data, color, isDark, textSub, gridLine, axisColor }) {
   const [progress, setProgress] = useState(0)
   const [hoverIdx, setHoverIdx] = useState(null)
-  const [livePhase, setLivePhase] = useState(0)
   const rafRef = useRef(0)
   const startRef = useRef(null)
   const liveRafRef = useRef(0)
   const liveStartRef = useRef(null)
+  // The traveling pulse used to be driven by a `livePhase` state value
+  // updated every animation frame — that forced a full React re-render of
+  // this chart 60 times a second, forever, for as long as the dashboard
+  // was open. It now writes straight to the SVG element via refs, so the
+  // loop never touches React at all.
+  const pulseTrailRef = useRef(null)
+  const pulseDotRef = useRef(null)
 
   const W = 640, H = 200
   const PAD = { top: 14, right: 12, bottom: 26, left: 30 }
@@ -455,19 +461,33 @@ function ActivityAreaChart({ data, color, isDark, textSub, gridLine, axisColor }
     return () => cancelAnimationFrame(rafRef.current)
   }, [data])
 
-  // Continuous traveling pulse — starts once the draw-in finishes, loops forever
+  // Continuous traveling pulse — starts once the draw-in finishes, loops
+  // forever. Writes directly to the path/circle DOM nodes each frame
+  // instead of calling setState, so it never triggers a React render.
   useEffect(() => {
     if (progress < 1) return
     liveStartRef.current = null
     const DURATION = 2600
+    const trail = 0.16
     const loop = (ts) => {
       if (liveStartRef.current === null) liveStartRef.current = ts
       const elapsed = (ts - liveStartRef.current) % DURATION
-      setLivePhase(elapsed / DURATION)
+      const livePhase = elapsed / DURATION
+      if (pulseTrailRef.current && pulseDotRef.current && lastIdx > 0) {
+        const p0 = Math.max(0, livePhase - trail)
+        const [hx, hy] = pointAt(livePhase)
+        const fadeIn = Math.min(livePhase / 0.04, 1) // avoid a hard pop-in right at phase 0
+        pulseTrailRef.current.setAttribute('d', segmentPath(p0, livePhase))
+        pulseTrailRef.current.setAttribute('opacity', 0.55 * fadeIn)
+        pulseDotRef.current.setAttribute('cx', hx)
+        pulseDotRef.current.setAttribute('cy', hy)
+        pulseDotRef.current.setAttribute('opacity', fadeIn)
+      }
       liveRafRef.current = requestAnimationFrame(loop)
     }
     liveRafRef.current = requestAnimationFrame(loop)
     return () => cancelAnimationFrame(liveRafRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, data])
 
   const yTicks = Array.from({ length: 4 }, (_, i) => {
@@ -522,21 +542,18 @@ function ActivityAreaChart({ data, color, isDark, textSub, gridLine, axisColor }
         <path d={areaPath(progress)} fill="url(#dashAreaGrad)" />
         <path d={linePath(progress)} fill="none" stroke={color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" filter="url(#dashGlow)" />
 
-        {/* Continuous traveling pulse — like a heart-rate monitor blip sweeping the line */}
-        {progress >= 1 && lastIdx > 0 && (() => {
-          const trail = 0.16
-          const p0 = Math.max(0, livePhase - trail)
-          const [hx, hy] = pointAt(livePhase)
-          const fadeIn = Math.min(livePhase / 0.04, 1) // avoid a hard pop-in right at phase 0
-          return (
-            <>
-              <path d={segmentPath(p0, livePhase)} fill="none" stroke={color} strokeWidth={2.5}
-                strokeLinecap="round" opacity={0.55 * fadeIn} />
-              <circle cx={hx} cy={hy} r={4} fill={color} opacity={fadeIn}
-                style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
-            </>
-          )
-        })()}
+        {/* Continuous traveling pulse — like a heart-rate monitor blip
+           sweeping the line. Always mounted (invisible via opacity=0 until
+           the rAF loop above starts writing real values) so the refs stay
+           attached across renders instead of being torn down and rebuilt. */}
+        {lastIdx > 0 && (
+          <>
+            <path ref={pulseTrailRef} d="" fill="none" stroke={color} strokeWidth={2.5}
+              strokeLinecap="round" opacity={0} />
+            <circle ref={pulseDotRef} cx={0} cy={0} r={4} fill={color} opacity={0}
+              style={{ filter: `drop-shadow(0 0 6px ${color})` }} />
+          </>
+        )}
 
         {progress < 1 && lastIdx > 0 && (() => {
           const visible = Math.floor(progress * lastIdx)
@@ -588,6 +605,17 @@ function ActivityAreaChart({ data, color, isDark, textSub, gridLine, axisColor }
       })()}
     </div>
   )
+}
+
+// Ticks its own tiny bit of local state every 5s instead of the whole page
+// re-rendering just to keep "Xm ago" labels fresh.
+function TimeAgo({ at }) {
+  const [, tick] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => tick(v => v + 1), 5000)
+    return () => clearInterval(id)
+  }, [])
+  return timeAgo(at)
 }
 
 // Animated stat card
@@ -893,10 +921,11 @@ export default function DashboardPage() {
   const { user, streak: authStreak } = useAuth()
   const { library }      = useLibrary()
 
-  const [friends,        setFriends]   = useState(null)
-  const [recentActivity, setActivity]  = useState([])
   const [frLoading,      setFrLoading] = useState(true)
-  const [lineData,       setLineData]  = useState([])
+  // Build line chart whenever library changes — useMemo instead of an
+  // effect+state pair, so this doesn't cost an extra render cycle every
+  // time the library updates.
+  const lineData = useMemo(() => buildLineData(library), [library])
 
   const streak  = authStreak?.current_streak ?? 0
   const longest = authStreak?.longest_streak ?? 0
@@ -909,88 +938,98 @@ export default function DashboardPage() {
       .catch(() => { /* calendar just stays empty — non-critical */ })
   }, [user])
 
-  // Forces a re-render every few seconds so "Xs ago" / "Xm ago" labels stay
-  // live without needing to refetch any data.
-  const [, forceTick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => forceTick(t => t + 1), 5000)
-    return () => clearInterval(id)
-  }, [])
+  // "Xs ago" / "Xm ago" labels in Recent Activity stay live via the
+  // self-ticking <TimeAgo> component below, instead of forcing this whole
+  // page to re-render every 5 seconds.
 
-  // Derived stats
-  const total     = library.length
-  const playing   = library.filter(g => g.status === 'playing').length
-  const completed = library.filter(g => g.status === 'completed').length
-  const wishlist  = library.filter(g => g.status === 'wishlist').length
-  const favorites = library.filter(g => g.fav).length
-  const owned     = total - wishlist
-  const progress  = owned > 0 ? Math.round((completed / owned) * 100) : 0
-
-  const gamesCount     = useCountUp(total)
-  const friendsCount   = useCountUp(friends ?? 0)
-  const completedCount = useCountUp(completed)
-
-  // Build line chart whenever library changes
-  useEffect(() => {
-    setLineData(buildLineData(library))
+  // Derived stats — single pass over the library instead of four separate
+  // .filter() scans, and memoized so it only recomputes when library
+  // actually changes rather than on every render.
+  const { total, playing, completed, wishlist, favorites, owned, progress } = useMemo(() => {
+    let playing = 0, completed = 0, wishlist = 0, favorites = 0
+    for (const g of library) {
+      if (g.status === 'playing') playing++
+      else if (g.status === 'completed') completed++
+      else if (g.status === 'wishlist') wishlist++
+      if (g.fav) favorites++
+    }
+    const total = library.length
+    const owned = total - wishlist
+    const progress = owned > 0 ? Math.round((completed / owned) * 100) : 0
+    return { total, playing, completed, wishlist, favorites, owned, progress }
   }, [library])
 
-  // Fetch friends + build activity
+  const gamesCount     = useCountUp(total)
+  const friendsCount   = useCountUp(friendsRaw?.length ?? 0)
+  const completedCount = useCountUp(completed)
+
+  // Fetch friends — only needs to run once per logged-in user, not every
+  // time the library changes (it previously re-fetched /api/friends/ over
+  // the network on every library update, which was wasted traffic since
+  // friends and library are unrelated).
+  const [friendsRaw, setFriendsRaw] = useState(null)
   useEffect(() => {
+    if (!user) return
+    let cancelled = false
     const token   = localStorage.getItem('gl_token')
     const headers = { Authorization: `Bearer ${token}` }
-
     ;(async () => {
       try {
         const res  = await fetch('/api/friends/', { headers })
         const data = await res.json()
-        const arr  = Array.isArray(data) ? data : []
-        setFriends(arr.length)
-
-        const friendActivity = [...arr]
-          .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-          .slice(0, 3)
-          .map(f => {
-            const friendUser = f.requester_id === user?.id ? f.addressee : f.requester
-            return {
-              type:   'friend',
-              action: 'New friend added',
-              detail: friendUser?.username || 'Someone',
-              at:     f.created_at,
-              emoji:  '👥',
-            }
-          })
-
-        const gameActivity = [...library]
-          .sort((a, b) => new Date(b.added_at) - new Date(a.added_at))
-          .slice(0, 5)
-          .map(g => {
-            let action = 'Added to Library', emoji = '➕'
-            if (g.status === 'completed')    { action = 'Marked Completed'; emoji = '✅' }
-            else if (g.status === 'playing') { action = 'Now Playing';      emoji = '🎮' }
-            else if (g.status === 'wishlist'){ action = 'Added to Wishlist';emoji = '🔖' }
-            if (g.fav)                       { action = 'Marked Favorite';  emoji = '❤️' }
-            return {
-              type:   'game',
-              action,
-              detail: g.title || 'Unknown',
-              at:     g.added_at,
-              emoji,
-            }
-          })
-
-        const merged = [...friendActivity, ...gameActivity]
-          .sort(() => Math.random() - 0.5) // natural-feeling mix
-          .slice(0, 6)
-
-        setActivity(merged)
+        if (!cancelled) setFriendsRaw(Array.isArray(data) ? data : [])
       } catch (err) {
         console.error('Friends fetch error:', err)
+        if (!cancelled) setFriendsRaw([])
       } finally {
-        setFrLoading(false)
+        if (!cancelled) setFrLoading(false)
       }
     })()
-  }, [library, user])
+    return () => { cancelled = true }
+  }, [user?.id])
+
+  // Merged activity feed — pure client-side computation from whatever
+  // friends/library data is already in memory, so it recomputes instantly
+  // on either changing without ever touching the network.
+  const recentActivity = useMemo(() => {
+    if (!friendsRaw) return []
+
+    const friendActivity = [...friendsRaw]
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 3)
+      .map(f => {
+        const friendUser = f.requester_id === user?.id ? f.addressee : f.requester
+        return {
+          type:   'friend',
+          action: 'New friend added',
+          detail: friendUser?.username || 'Someone',
+          at:     f.created_at,
+          emoji:  '👥',
+        }
+      })
+
+    const gameActivity = [...library]
+      .sort((a, b) => new Date(b.added_at) - new Date(a.added_at))
+      .slice(0, 5)
+      .map(g => {
+        let action = 'Added to Library', emoji = '➕'
+        if (g.status === 'completed')    { action = 'Marked Completed'; emoji = '✅' }
+        else if (g.status === 'playing') { action = 'Now Playing';      emoji = '🎮' }
+        else if (g.status === 'wishlist'){ action = 'Added to Wishlist';emoji = '🔖' }
+        if (g.fav)                       { action = 'Marked Favorite';  emoji = '❤️' }
+        return {
+          type:   'game',
+          action,
+          detail: g.title || 'Unknown',
+          at:     g.added_at,
+          emoji,
+        }
+      })
+
+    return [...friendActivity, ...gameActivity]
+      .sort(() => Math.random() - 0.5) // natural-feeling mix
+      .slice(0, 6)
+  }, [friendsRaw, library, user])
 
   // ── Theme tokens ─────────────────────────────────────────────────────────
   const pageBg     = isDark ? '#0b0f19'              : '#f1f4fb'
@@ -1092,13 +1131,13 @@ export default function DashboardPage() {
           0%, 100% { transform: scale(1); filter: drop-shadow(0 0 3px rgba(249,115,22,0.5)); }
           50%      { transform: scale(1.1); filter: drop-shadow(0 0 8px rgba(249,115,22,0.85)); }
         }
-        .dash-flame-pulse      { display: inline-flex; animation: dashFlamePulse 1.8s ease-in-out infinite; }
-        .dash-wave-scroll      { animation: dashWaveScroll 2.6s linear infinite; }
-        .dash-wave-scroll-slow { animation: dashWaveScroll 4s linear infinite reverse; }
-        .dash-ring-pulse       { animation: dashPulseRing 2.4s ease-out infinite; }
-        .dash-ring-pulse-delay { animation: dashPulseRing 2.4s ease-out 1.2s infinite; }
+        .dash-flame-pulse      { display: inline-flex; animation: dashFlamePulse 1.8s ease-in-out infinite; will-change: transform; }
+        .dash-wave-scroll      { animation: dashWaveScroll 2.6s linear infinite; will-change: transform; }
+        .dash-wave-scroll-slow { animation: dashWaveScroll 4s linear infinite reverse; will-change: transform; }
+        .dash-ring-pulse       { animation: dashPulseRing 2.4s ease-out infinite; will-change: transform, opacity; }
+        .dash-ring-pulse-delay { animation: dashPulseRing 2.4s ease-out 1.2s infinite; will-change: transform, opacity; }
         .dash-arc-glow         { animation: dashGlowBreathe 2.6s ease-in-out infinite; }
-        .dash-donut-breathe    { animation: dashBreathe 4s ease-in-out infinite; }
+        .dash-donut-breathe    { animation: dashBreathe 4s ease-in-out infinite; will-change: transform; }
         .dash-flow-dash        { animation: dashFlowDash 1.1s linear infinite; }
 
         /* ── Mobile fit ── */
@@ -1283,7 +1322,7 @@ export default function DashboardPage() {
                   }}>
                     {act.type === 'friend' ? 'Friend' : 'Game'}
                   </span>
-                  <span style={{ fontSize: 11, color: textSub }}>{timeAgo(act.at)}</span>
+                  <span style={{ fontSize: 11, color: textSub }}><TimeAgo at={act.at} /></span>
                 </div>
               </div>
             ))}

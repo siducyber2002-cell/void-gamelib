@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { Star, Heart, CheckCircle, PlayCircle, BookOpen, Trash2, Gamepad2, Trophy, Bookmark, Search } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { useLibrary } from '../context/LibraryContext'
@@ -55,7 +55,7 @@ async function fetchRawgGame(slug) {
 }
 
 // Watermark background — 4×4 grid of cycling game cover images
-function WatermarkBg({ images, isDark }) {
+const WatermarkBg = memo(function WatermarkBg({ images, isDark }) {
   const COUNT = 16
   const [slots, setSlots]   = useState(() => Array.from({ length: COUNT }, (_, i) => i % Math.max(images.length, 1)))
   const [fading, setFading] = useState(Array(COUNT).fill(false))
@@ -128,7 +128,7 @@ function WatermarkBg({ images, isDark }) {
       />
     </div>
   )
-}
+})
 
 export default function LibraryPage() {
   const { dark: isDark } = useTheme()

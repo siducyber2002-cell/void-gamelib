@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo } from 'react'
 
 const ThemeContext = createContext({ dark: true, setDark: () => {} })
 
@@ -21,8 +21,13 @@ export function ThemeProvider({ children }) {
     }
   }, [dark])
 
+  // setDark is already stable (useState setter), so this only produces a
+  // new reference when `dark` itself changes — every component reading
+  // useTheme() no longer re-renders on unrelated ThemeProvider re-renders.
+  const value = useMemo(() => ({ dark, setDark }), [dark])
+
   return (
-    <ThemeContext.Provider value={{ dark, setDark }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   )

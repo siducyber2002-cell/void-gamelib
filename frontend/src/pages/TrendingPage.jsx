@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, memo } from 'react'
 import { Activity, TrendingUp, Flame, Star, Rocket, Loader2, ImageOff } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 
@@ -20,7 +20,7 @@ function formatNumber(num) {
   return String(num)
 }
 
-function GameCover({ src, alt, className = '' }) {
+const GameCover = memo(function GameCover({ src, alt, className = '' }) {
   return (
     <div className={`rounded-lg overflow-hidden flex-shrink-0 bg-slate-200 dark:bg-white/10 ${className}`}>
       {src ? (
@@ -37,7 +37,7 @@ function GameCover({ src, alt, className = '' }) {
       )}
     </div>
   )
-}
+})
 
 function TrendCard({ title, icon: Icon, color, items, loading, error, renderItem, emptyText = 'No games found' }) {
   return (
@@ -82,8 +82,8 @@ export default function TrendingPage() {
   const [lastUpdated, setLastUpdated] = useState(null)
 
   useEffect(() => {
-    let cancelled = false
     let intervalId = null
+    const controller = new AbortController()
 
     async function fetchData(isRefresh = false) {
       try {
@@ -93,21 +93,19 @@ export default function TrendingPage() {
         // by sampling from a wider pool and shuffling order.
         const randomPage = Math.floor(Math.random() * 2) + 1
 
-        const [trendingRes, popularRes, ratedRes, risingRes] = await Promise.all([
-          fetch(`${RAWG_BASE}?key=${RAWG_KEY}&dates=${getRecentDateRange(90)}&ordering=-added&page_size=10&page=${randomPage}`),
-          fetch(`${RAWG_BASE}?key=${RAWG_KEY}&ordering=-added&page_size=10&page=${randomPage}`),
-          fetch(`${RAWG_BASE}?key=${RAWG_KEY}&ordering=-rating&metacritic=85,100&page_size=10&page=${randomPage}`),
-          fetch(`${RAWG_BASE}?key=${RAWG_KEY}&dates=${getRecentDateRange(30)}&ordering=-added&page_size=10&page=${randomPage}`),
+        const results = await Promise.allSettled([
+          fetch(`${RAWG_BASE}?key=${RAWG_KEY}&dates=${getRecentDateRange(90)}&ordering=-added&page_size=10&page=${randomPage}`, { signal: controller.signal }).then(r => r.json()),
+          fetch(`${RAWG_BASE}?key=${RAWG_KEY}&ordering=-added&page_size=10&page=${randomPage}`, { signal: controller.signal }).then(r => r.json()),
+          fetch(`${RAWG_BASE}?key=${RAWG_KEY}&ordering=-rating&metacritic=85,100&page_size=10&page=${randomPage}`, { signal: controller.signal }).then(r => r.json()),
+          fetch(`${RAWG_BASE}?key=${RAWG_KEY}&dates=${getRecentDateRange(30)}&ordering=-added&page_size=10&page=${randomPage}`, { signal: controller.signal }).then(r => r.json()),
         ])
 
-        const [trendingData, popularData, ratedData, risingData] = await Promise.all([
-          trendingRes.json(),
-          popularRes.json(),
-          ratedRes.json(),
-          risingRes.json(),
-        ])
-
-        if (cancelled) return
+        // Each section falls back to an empty list if its own request failed,
+        // instead of one flaky endpoint blanking out the whole page.
+        const [trendingData, popularData, ratedData, risingData] = results.map(
+          r => (r.status === 'fulfilled' ? r.value : {})
+        )
+        const allFailed = results.every(r => r.status === 'rejected')
 
         const trendingResults = (trendingData.results || []).slice(0, 6)
         const popularResults = (popularData.results || []).slice(0, 6)
@@ -118,12 +116,13 @@ export default function TrendingPage() {
         setRising((risingData.results || []).slice(0, 6))
         setHero(trendingResults[0] || popularResults[0] || null)
         setLastUpdated(new Date())
-        setError(false)
+        setError(allFailed)
       } catch (err) {
+        if (err.name === 'AbortError') return
         console.error('Failed to fetch trending games:', err)
-        if (!cancelled) setError(true)
+        setError(true)
       } finally {
-        if (!cancelled) setLoading(false)
+        setLoading(false)
       }
     }
 
@@ -131,7 +130,7 @@ export default function TrendingPage() {
     intervalId = setInterval(() => fetchData(true), 5 * 60 * 1000) // refresh every 5 minutes
 
     return () => {
-      cancelled = true
+      controller.abort()
       if (intervalId) clearInterval(intervalId)
     }
   }, [])

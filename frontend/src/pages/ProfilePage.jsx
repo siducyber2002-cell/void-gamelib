@@ -257,15 +257,30 @@ export default function ProfilePage() {
           80%  { transform: scale(1.6);  opacity: 0; }
           100% { transform: scale(1.6);  opacity: 0; }
         }
-        .avatar-ring       { animation: avatarPulse 2.8s ease-out infinite; }
-        .avatar-ring-delay { animation: avatarPulse 2.8s ease-out 1.4s infinite; }
-        @keyframes xpShine {
-          0%   { background-position: -200% center; }
-          100% { background-position: 200% center; }
-        }
+        .avatar-ring       { animation: avatarPulse 2.8s ease-out infinite; will-change: transform, opacity; }
+        .avatar-ring-delay { animation: avatarPulse 2.8s ease-out 1.4s infinite; will-change: transform, opacity; }
+
+        /* Sweeping highlight instead of an animated background-position —
+           background-position runs on the main thread and repaints every
+           frame forever. A translateX'd overlay is compositor-only, so it
+           stays smooth even while the rest of the page is busy. */
         .xp-bar-shine {
-          background-size: 200% auto;
+          position: relative;
+          overflow: hidden;
+        }
+        .xp-bar-shine::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          width: 40%;
+          background: linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent);
+          transform: translateX(-150%);
           animation: xpShine 2.5s linear infinite;
+          will-change: transform;
+        }
+        @keyframes xpShine {
+          0%   { transform: translateX(-150%); }
+          100% { transform: translateX(350%); }
         }
       `}</style>
 

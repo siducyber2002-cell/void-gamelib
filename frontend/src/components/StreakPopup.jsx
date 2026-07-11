@@ -1,9 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 
-export default function StreakPopup() {
+// No props, so memo() means this only ever re-renders when its own hooks
+// (useAuth/useTheme) actually give it new values — not because whatever
+// mounted it happened to re-render for an unrelated reason.
+function StreakPopup() {
   const { showStreakPopup, streak, dismissStreakPopup } = useAuth()
   const { dark } = useTheme()
 
@@ -11,7 +14,7 @@ export default function StreakPopup() {
     if (!showStreakPopup) return
     const timer = setTimeout(dismissStreakPopup, 5000)
     return () => clearTimeout(timer)
-  }, [showStreakPopup])
+  }, [showStreakPopup, dismissStreakPopup])
 
   if (!showStreakPopup || !streak) return null
 
@@ -66,3 +69,5 @@ export default function StreakPopup() {
     document.body
   )
 }
+
+export default memo(StreakPopup)

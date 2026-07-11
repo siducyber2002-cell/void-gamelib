@@ -145,7 +145,18 @@ export default function GroupDetailPage() {
     pollRef.current = setInterval(async () => {
       try {
         const res = await axios.get(`/api/community/groups/${groupId}/messages`)
-        setMessages(res.data)
+        setMessages(prev => {
+          // Cheap fingerprint (count + last id) instead of a deep compare —
+          // messages are effectively append-only, so this is enough to tell
+          // "nothing new arrived" apart from "something changed". Skipping
+          // setState on a no-op poll avoids re-rendering the whole thread
+          // and re-firing the auto-scroll effect every 4 seconds for chats
+          // that are just sitting idle.
+          const next = res.data
+          const same = next.length === prev.length &&
+            next[next.length - 1]?.id === prev[prev.length - 1]?.id
+          return same ? prev : next
+        })
       } catch { /* silent */ }
     }, POLL_MS)
     return () => clearInterval(pollRef.current)

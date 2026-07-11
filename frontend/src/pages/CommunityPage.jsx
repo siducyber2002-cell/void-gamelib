@@ -59,30 +59,36 @@ export default function CommunityPage() {
     tier: 'Casual', activity_status: 'Active now', highlight_tag: '', directives: '',
   })
 
-  const fetchGroups = async () => {
-    try {
-      const res = await axios.get('/api/community/groups')
-      setGroups(res.data)
-      // fetch a light member preview per group for the avatar stack
-      const entries = await Promise.all(
-        res.data.map(async (g) => {
-          try {
-            const m = await axios.get(`/api/community/groups/${g.id}/members`)
-            return [g.id, m.data]
-          } catch {
-            return [g.id, []]
-          }
-        })
-      )
-      setMembersByGroup(Object.fromEntries(entries))
-    } catch {
-      toast.error('Could not load groups')
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    let cancelled = false
 
-  useEffect(() => { fetchGroups() }, [])
+    const fetchGroups = async () => {
+      try {
+        const res = await axios.get('/api/community/groups')
+        if (cancelled) return
+        setGroups(res.data)
+        // fetch a light member preview per group for the avatar stack
+        const entries = await Promise.all(
+          res.data.map(async (g) => {
+            try {
+              const m = await axios.get(`/api/community/groups/${g.id}/members`)
+              return [g.id, m.data]
+            } catch {
+              return [g.id, []]
+            }
+          })
+        )
+        if (!cancelled) setMembersByGroup(Object.fromEntries(entries))
+      } catch {
+        if (!cancelled) toast.error('Could not load groups')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    fetchGroups()
+    return () => { cancelled = true }
+  }, [])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()

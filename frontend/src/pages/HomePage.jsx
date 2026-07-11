@@ -758,12 +758,17 @@ export default function HomePage() {
   const current      = hero[heroIdx]||{}
   const heroCoverUrl = heroCovers[current.rawgSlug]||current.imageUrl
 
-  // Auto-advance hero (5s intervals)
+  // Auto-advance hero (5s intervals). Depends on hero.length rather than
+  // the `hero` array itself — `hero` gets a brand-new array reference on
+  // every paginated batch load AND on the 5-minute reshuffle (same items,
+  // new order), and resetAuto used to fire on every one of those, which
+  // kept clearing and restarting this interval before it ever got a
+  // chance to fire — the carousel would auto-advance rarely or never.
   const resetAuto=useCallback(()=>{
     clearInterval(autoRef.current)
     if(!hero.length) return
     autoRef.current=setInterval(()=>setHeroIdx(i=>(i+1)%hero.length),5000)
-  },[hero])
+  },[hero.length])
 
   useEffect(()=>{resetAuto();return()=>clearInterval(autoRef.current)},[resetAuto])
 
