@@ -9,6 +9,8 @@ import {
   ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import PageTour from '../components/onboarding/PageTour'
+import { groupDetailTourSteps } from '../components/onboarding/tourSteps'
 
 const POLL_MS = 4000
 const AVATAR_COLORS = ['#a855f7', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#ec4899']
@@ -525,6 +527,17 @@ export default function GroupDetailPage() {
 
   return (
     <div className="p-4 md:p-6 animate-fade-in">
+      {/* ── First-time guided tour ── */}
+      {/* pageKey is fixed (not per-group) — the UI is identical across every
+          group, so one "seen" flag covers all of them. Gated on is_member
+          since the chat/members/media panels this tour targets only render
+          once the user has actually joined. */}
+      <PageTour
+        pageKey="group-detail"
+        steps={groupDetailTourSteps}
+        ready={!loading && !!group?.is_member}
+      />
+
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="flex-1 min-w-0 flex flex-col bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden">
 
@@ -765,7 +778,7 @@ export default function GroupDetailPage() {
                 </button>
               )}
 
-              <div className="flex gap-1 sm:gap-2 items-center bg-slate-900 border border-slate-800 rounded-2xl px-2 sm:px-3 py-2">
+              <div className="flex gap-1 sm:gap-2 items-center bg-slate-900 border border-slate-800 rounded-2xl px-2 sm:px-3 py-2" data-tour="group-chat-input">
                 <input ref={attachInputRef} type="file" onChange={handleAttachChange} className="hidden" />
                 <button onClick={handleAttachPick} disabled={recording} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1 disabled:opacity-40"><Paperclip size={16} /></button>
                 <textarea
@@ -824,7 +837,7 @@ export default function GroupDetailPage() {
             </div>
           )}
 
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4" data-tour="group-members-panel">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Users size={12} /> Members</h4>
               <AvatarStack members={members} size={22} />
@@ -870,7 +883,7 @@ export default function GroupDetailPage() {
             </div>
           </div>
 
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4" data-tour="group-media-panel">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Media Feed</h4>
               <div className="flex items-center gap-3">

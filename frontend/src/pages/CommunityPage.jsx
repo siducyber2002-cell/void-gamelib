@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { Search, Plus, Users, Circle, X, Clock, ShieldCheck, Loader2 } from 'lucide-react'
 import toast from 'react-hot-toast'
+import PageTour from '../components/onboarding/PageTour'
+import { communityTourSteps } from '../components/onboarding/tourSteps'
 
 const TIER_STYLES = {
   'Elite Tier': 'bg-fuchsia-500 text-white',
@@ -128,6 +130,16 @@ export default function CommunityPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-6 md:p-8 animate-fade-in">
+      {/* ── First-time guided tour ── */}
+      {/* Gated on !loading so search/create-group/groups-list targets all exist
+          before Joyride tries to attach — groups-list only renders once the
+          fetch resolves, whether it ends up empty or populated. */}
+      <PageTour
+        pageKey="community"
+        steps={communityTourSteps}
+        ready={!loading}
+      />
+
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-7">
         <div>
           <h1 className="font-semibold text-2xl text-violet-400">Find Your Squad</h1>
@@ -136,7 +148,7 @@ export default function CommunityPage() {
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0 w-full md:w-auto">
-          <div className="relative flex-1 sm:flex-none">
+          <div className="relative flex-1 sm:flex-none" data-tour="community-search">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               value={search}
@@ -146,6 +158,7 @@ export default function CommunityPage() {
             />
           </div>
           <button
+            data-tour="create-group-btn"
             onClick={() => setShowCreate(true)}
             className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-sm font-bold hover:opacity-90 transition whitespace-nowrap w-full sm:w-auto"
           >
@@ -161,7 +174,7 @@ export default function CommunityPage() {
       ) : filtered.length === 0 ? (
         <div className="text-center py-16 text-slate-500">No groups found. Be the first to create one.</div>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4" data-tour="groups-list">
           {filtered.map(g => {
             const previewMembers = membersByGroup[g.id] || []
             return (
