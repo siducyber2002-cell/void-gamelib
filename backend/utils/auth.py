@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -23,11 +23,30 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 10080)
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/auth/token"
 )
+
+# bcrypt has a hard 72-byte input limit -- anything longer raises inside
+# the C extension. We truncate on the byte boundary (not the char
+# boundary) so multi-byte UTF-8 passwords don't get cut mid-character.
+_BCRYPT_MAX_BYTES = 72
+
+
+def _to_bcrypt_bytes(password: str) -> bytes:
+    encoded = password.encode("utf-8")
+    if len(encoded) <= _BCRYPT_MAX_BYTES:
+        return encoded
+    # Trim byte-by-byte until it's valid utf-8 again, so we never split
+    # a multi-byte character in half.
+    trimmed = encoded[:_BCRYPT_MAX_BYTES]
+    while trimmed:
+        try:
+            trimmed.decode("utf-8")
+            return trimmed
+        except UnicodeDecodeError:
+            trimmed = trimmed[:-1]
+    return trimmed
 
 
 # ==========================
@@ -37,16 +56,27 @@ oauth2_scheme = OAuth2PasswordBearer(
 def hash_password(password: str) -> str:
     """
     Hash a plaintext password with bcrypt for storage.
+
+    Calls the `bcrypt` package directly instead of going through
+    passlib's CryptContext. passlib's bcrypt backend probes
+    `bcrypt.__about__.__version__` to detect the installed bcrypt
+    version, and that attribute was removed in bcrypt>=4.1 -- so on
+    any environment that resolves a newer bcrypt at install time,
+    passlib's *first* hash call raises AttributeError and every
+    /register call 500s. Calling bcrypt.hashpw/checkpw ourselves
+    removes that fragile version-detection step entirely.
     """
-    return pwd_context.hash(password)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(_to_bcrypt_bytes(password), salt)
+    return hashed.decode("utf-8")
 
 
 def _looks_like_bcrypt_hash(value: str) -> bool:
     """
     bcrypt hashes always start with one of these prefixes and are
     60 chars long. Anything else stored in hashed_password is either
-    a different passlib scheme (unlikely here) or leftover plaintext
-    from the incident where hash_password() was briefly stubbed out.
+    a different scheme (unlikely here) or leftover plaintext from the
+    incident where hash_password() was briefly stubbed out.
     """
     return isinstance(value, str) and value.startswith(("$2a$", "$2b$", "$2y$")) and len(value) == 60
 
@@ -68,7 +98,11 @@ def verify_password(plain_password: str, stored_password: str) -> bool:
     after a successful login.
     """
     if _looks_like_bcrypt_hash(stored_password):
-        return pwd_context.verify(plain_password, stored_password)
+        try:
+            return bcrypt.checkpw(_to_bcrypt_bytes(plain_password), stored_password.encode("utf-8"))
+        except ValueError:
+            # Malformed hash in the DB -- treat as no match rather than 500ing.
+            return False
 
     # Legacy/incident fallback: stored value is plaintext.
     return plain_password == stored_password
@@ -88,7 +122,10 @@ def verify_and_upgrade_password(plain_password: str, user: User, db: Session) ->
     stored = user.hashed_password
 
     if _looks_like_bcrypt_hash(stored):
-        return pwd_context.verify(plain_password, stored)
+        try:
+            return bcrypt.checkpw(_to_bcrypt_bytes(plain_password), stored.encode("utf-8"))
+        except ValueError:
+            return False
 
     if plain_password == stored:
         user.hashed_password = hash_password(plain_password)
