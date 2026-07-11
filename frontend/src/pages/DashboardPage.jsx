@@ -959,15 +959,16 @@ export default function DashboardPage() {
     return { total, playing, completed, wishlist, favorites, owned, progress }
   }, [library])
 
-  const gamesCount     = useCountUp(total)
-  const friendsCount   = useCountUp(friendsRaw?.length ?? 0)
-  const completedCount = useCountUp(completed)
-
   // Fetch friends — only needs to run once per logged-in user, not every
   // time the library changes (it previously re-fetched /api/friends/ over
   // the network on every library update, which was wasted traffic since
   // friends and library are unrelated).
   const [friendsRaw, setFriendsRaw] = useState(null)
+
+  const gamesCount     = useCountUp(total)
+  const friendsCount   = useCountUp(friendsRaw?.length ?? 0)
+  const completedCount = useCountUp(completed)
+
   useEffect(() => {
     if (!user) return
     let cancelled = false
