@@ -202,10 +202,15 @@ export default function GroupDetailPage() {
     }
   }, [messages])
 
-  useEffect(() => {
-    if (!group?.is_member || messages.length === 0) return
-    axios.post(`/api/community/groups/${groupId}/messages/read`).catch(() => {})
-  }, [messages.length, group?.is_member, groupId])
+  // NOTE: there used to be a POST to `/messages/read` here on every new
+  // message. There's no backend route for it (405 in the logs) and no
+  // per-member read-state model for group chat to back one — GroupMessage
+  // has no is_read column, and unlike DMs a group needs per-user read
+  // tracking (a table keyed on user+group), not a single boolean. Nothing
+  // in this page currently reads back an unread state either, so this was
+  // a guaranteed-failing request firing on every poll that returned new
+  // messages, for no effect. Removed. If per-group unread badges become a
+  // real feature, this needs a proper GroupReadState table + route first.
 
   useEffect(() => {
     return () => {
