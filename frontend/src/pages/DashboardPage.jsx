@@ -8,6 +8,8 @@ import axios from 'axios'
 import { useTheme } from '../context/ThemeContext'
 import { useAuth } from '../context/AuthContext'
 import { useLibrary } from '../context/LibraryContext'
+import PageTour from '../components/onboarding/PageTour'
+import { dashboardTourSteps } from '../components/onboarding/tourSteps'
 
 const ACCENT   = '#a855f7'
 const ACCENT2  = '#7c3aed'
@@ -1058,6 +1060,14 @@ export default function DashboardPage() {
 
   return (
     <div className="dash-page-wrap" style={{ background: pageBg, minHeight: '100vh', padding: '28px 24px 48px', fontFamily: 'DM Sans, sans-serif' }}>
+      {/* ── First-time guided tour ── */}
+      {/* Gated on !frLoading — the friends count feeds the first stat card,
+          so waiting for it avoids spotlighting a card still showing '…'. */}
+      <PageTour
+        pageKey="dashboard"
+        steps={dashboardTourSteps}
+        ready={!frLoading}
+      />
       <style>{`
         @keyframes dashPulseRing {
           0%   { transform: scale(0.8); opacity: 0.55; }
@@ -1187,14 +1197,14 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Stat cards ── */}
-      <div className="dash-stat-grid">
+      <div className="dash-stat-grid" data-tour="dash-stat-cards">
         <StatCard label="Friends"             value={frLoading ? '…' : friendsCount} icon={Users}      color="#10b981" delay={80}  isDark={isDark} />
         <StatCard label="Completed"           value={completedCount} icon={CheckCircle} color="#8b5cf6" delay={160} isDark={isDark} />
         <StatCard label="Total Games in Library" value={gamesCount}  icon={Gamepad2}    color={ACCENT}  delay={240} isDark={isDark} />
       </div>
 
       {/* ── Row 2: Breakdown + Progress + Streak ── */}
-      <div className="dash-row2-grid">
+      <div className="dash-row2-grid" data-tour="dash-breakdown-row">
 
         {/* Library Breakdown */}
         <div style={{ ...cardStyle, padding: '24px 26px' }}>
@@ -1267,7 +1277,7 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Row 4: Recent Activity ── */}
-      <div style={{ ...cardStyle, padding: '24px 26px' }}>
+      <div style={{ ...cardStyle, padding: '24px 26px' }} data-tour="dash-recent-activity">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
             <p style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.15em', color: ACCENT, textTransform: 'uppercase', marginBottom: 4 }}>Feed</p>

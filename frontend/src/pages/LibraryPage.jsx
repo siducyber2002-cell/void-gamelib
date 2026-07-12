@@ -3,6 +3,8 @@ import { Star, Heart, CheckCircle, PlayCircle, BookOpen, Trash2, Gamepad2, Troph
 import { useTheme } from '../context/ThemeContext'
 import { useLibrary } from '../context/LibraryContext'
 import { awardXP } from '../utils/xpService'
+import PageTour from '../components/onboarding/PageTour'
+import { libraryTourSteps } from '../components/onboarding/tourSteps'
 
 
 const RAWG_API_KEY = 'cf38811b97cf43bbb8d88c606ed4e73c'
@@ -220,6 +222,8 @@ export default function LibraryPage() {
       className="relative min-h-screen animate-fade-in"
       style={{ background: pageBg, fontFamily: 'DM Sans, sans-serif' }}
     >
+      {/* ── First-time guided tour ── */}
+      <PageTour pageKey="library" steps={libraryTourSteps} />
       <style>{`
         .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -265,7 +269,7 @@ export default function LibraryPage() {
         </div>
 
         {/* Stat cards — 5 cards now */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3" data-tour="library-stats">
           {stats.map(stat => (
             <div
               key={stat.label}
@@ -293,6 +297,7 @@ export default function LibraryPage() {
         <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <div
             className="no-scrollbar flex items-center gap-0.5 p-1 rounded-xl overflow-x-auto max-w-full"
+            data-tour="library-tabs"
             style={{
               background: tabBarBg,
               border: `1px solid ${cardBorder}`,
@@ -355,7 +360,7 @@ export default function LibraryPage() {
 
         {/* Empty state */}
         {filtered.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <div className="flex flex-col items-center justify-center py-24 gap-4" data-tour="library-game-grid">
             <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: accentColors.primary + '15' }}>
               <BookOpen size={26} style={{ color: accentColors.primary }} />
             </div>
@@ -370,7 +375,7 @@ export default function LibraryPage() {
 
         {/* Game grid */}
         {filtered.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" data-tour="library-game-grid">
             {filtered.map(game => {
               const coverUrl = getCover(game)
               const meta     = STATUS_META[game.status] || STATUS_META.playing

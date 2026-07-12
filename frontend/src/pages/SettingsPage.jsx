@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import toast from 'react-hot-toast'
 import { Eye, EyeOff, AlertTriangle, X as XIcon, Settings as SettingsIcon } from 'lucide-react'
+import PageTour from '../components/onboarding/PageTour'
+import { settingsTourSteps } from '../components/onboarding/tourSteps'
 
 function memberSince(dateStr) {
   if (!dateStr) return '—'
@@ -88,6 +90,8 @@ export default function SettingsPage() {
 
   return (
     <div className="px-6 py-7 max-w-2xl animate-fade-in relative" style={{ fontFamily: 'DM Sans, sans-serif' }}>
+      {/* ── First-time guided tour ── */}
+      <PageTour pageKey="settings" steps={settingsTourSteps} />
       <style>{`
         @keyframes settingsCardIn {
           from { opacity: 0; transform: translateY(14px); }
@@ -127,7 +131,7 @@ export default function SettingsPage() {
 
       <div className="flex flex-col gap-5">
 
-        <div style={{ ...cardAnim(0), background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }} className="rounded-2xl p-6">
+        <div style={{ ...cardAnim(0), background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }} className="rounded-2xl p-6" data-tour="settings-account-info">
           <h2 className="font-display text-xl font-bold mb-4" style={{ color: textPrimary }}>Account Info</h2>
           <div className="flex flex-col gap-1">
             {[
@@ -144,7 +148,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div style={{ ...cardAnim(1), background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }} className="rounded-2xl p-6">
+        <div style={{ ...cardAnim(1), background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }} className="rounded-2xl p-6" data-tour="settings-change-password">
           <h2 className="font-display text-xl font-bold mb-4" style={{ color: textPrimary }}>Change Password</h2>
           <form onSubmit={submitPw} className="flex flex-col gap-4">
             {[
@@ -181,7 +185,7 @@ export default function SettingsPage() {
           </form>
         </div>
 
-        <div style={{ ...cardAnim(2), background: cardBg, border: `1px solid ${isDark ? 'rgba(239,68,68,0.25)' : '#fee2e2'}`, boxShadow: cardShadow }} className="rounded-2xl p-6">
+        <div style={{ ...cardAnim(2), background: cardBg, border: `1px solid ${isDark ? 'rgba(239,68,68,0.25)' : '#fee2e2'}`, boxShadow: cardShadow }} className="rounded-2xl p-6" data-tour="settings-danger-zone">
           <h2 className="font-display text-xl font-bold text-red-500 mb-2">Danger Zone</h2>
           <p className="text-sm mb-4" style={{ color: textSub }}>Once you delete your account, there is no going back.</p>
           <button

@@ -11,6 +11,8 @@ import toast from 'react-hot-toast'
 import DMChatPanel from '../components/chat/DMChatPanel'
 import { useXPToast } from '../components/XPToast'
 import { awardXP } from '../utils/xpService'
+import PageTour from '../components/onboarding/PageTour'
+import { friendsTourSteps } from '../components/onboarding/tourSteps'
 
 const TABS = ['Friends', 'Requests', 'Online', 'Offline', 'Blocked']
 const ACCENT = { primary: '#a855f7', secondary: '#7c3aed' }
@@ -802,6 +804,10 @@ export default function FriendsPage() {
   // ── main render ───────────────────────────────────────────
   return (
     <div ref={outerRef} style={{ position: 'relative', background: bgPage, minHeight: '100%', maxWidth: '100vw', overflowX: 'hidden' }}>
+      {/* ── First-time guided tour ── */}
+      {/* No `ready` gate needed — the `if (loading) return (...)` above
+          already guarantees this tree only renders once friend data is in. */}
+      <PageTour pageKey="friends" steps={friendsTourSteps} />
       <style>{`
         .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
@@ -842,6 +848,7 @@ export default function FriendsPage() {
             </p>
           </div>
           <button
+            data-tour="friends-add-btn"
             onClick={() => setAddFriendOpen(true)}
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -861,6 +868,7 @@ export default function FriendsPage() {
         {/* ── STATS STRIP ──────────────────────────────────── */}
         <div
           className="no-scrollbar"
+          data-tour="friends-stats-strip"
           style={{
             display: 'flex', alignItems: 'center',
             background: bgCard, border: `1px solid ${borderClr}`,
@@ -895,6 +903,7 @@ export default function FriendsPage() {
         }}>
           <div
             className="no-scrollbar"
+            data-tour="friends-tabs"
             style={{
               display: 'flex', gap: 0,
               overflowX: 'auto',

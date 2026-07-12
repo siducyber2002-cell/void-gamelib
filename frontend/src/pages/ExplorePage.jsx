@@ -7,6 +7,8 @@ import { useTheme } from '../context/ThemeContext'
 import { useLibrary } from '../context/LibraryContext'
 import { awardXP } from '../utils/xpService'
 import toast from 'react-hot-toast'
+import PageTour from '../components/onboarding/PageTour'
+import { exploreTourSteps } from '../components/onboarding/tourSteps'
 
 const RAWG_KEY = 'cf38811b97cf43bbb8d88c606ed4e73c'
 
@@ -501,6 +503,12 @@ export default function ExplorePage() {
       className="relative min-h-screen h-full animate-fade-in"
       style={{ background: pageBg, fontFamily: 'DM Sans, sans-serif' }}
     >
+      {/* ── First-time guided tour ── */}
+      <PageTour
+        pageKey="explore"
+        steps={exploreTourSteps}
+        ready={!loading && games.length > 0}
+      />
       <style>{`
         @keyframes compassSpin {
           0%   { transform: rotate(0deg); }
@@ -565,7 +573,7 @@ export default function ExplorePage() {
         {/* ── Search + Sort + Filter toggle ── */}
         <div className="flex flex-col sm:flex-row gap-3">
           {/* Search */}
-          <div className="flex-1 min-w-0 sm:min-w-48 relative">
+          <div className="flex-1 min-w-0 sm:min-w-48 relative" data-tour="explore-search">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: textSub }} />
             <input
               type="text"
@@ -608,6 +616,7 @@ export default function ExplorePage() {
 
             {/* Filter toggle */}
             <button
+              data-tour="explore-filters-btn"
               onClick={() => setShowFilters(!showFilters)}
               className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all duration-150 whitespace-nowrap"
               style={showFilters || activeFilters.length > 0
@@ -691,7 +700,7 @@ export default function ExplorePage() {
             ))}
           </div>
         ) : games.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4" data-tour="explore-game-grid">
             {games.map((game, i) => (
               <GameCard
                 key={game.id}

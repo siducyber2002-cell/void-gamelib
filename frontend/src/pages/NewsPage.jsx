@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
 import { awardXP } from '../utils/xpService'
+import PageTour from '../components/onboarding/PageTour'
+import { newsTourSteps } from '../components/onboarding/tourSteps'
 
 const REFRESH_INTERVAL = 10 * 60 * 1000
 const PAGE_SIZE        = 12
@@ -179,6 +181,12 @@ export default function NewsPage() {
 
   return (
     <div className="relative min-h-screen h-full w-full max-w-full overflow-x-hidden animate-fade-in" style={{ background: pageBg, fontFamily: 'DM Sans, sans-serif' }}>
+      {/* ── First-time guided tour ── */}
+      <PageTour
+        pageKey="news"
+        steps={newsTourSteps}
+        ready={!loading && !error}
+      />
       <style>{`
         @keyframes newsRock {
           0%,70% { transform: rotate(0deg); }
@@ -220,6 +228,7 @@ export default function NewsPage() {
         {/* Tabs + Live row */}
         <div className="flex flex-wrap items-center gap-3 justify-between">
           <div className="flex items-center gap-0.5 p-1 rounded-xl overflow-x-auto"
+            data-tour="news-category-tabs"
             style={{ background: tabBarBg, border: `1px solid ${cardBorder}` }}>
             {TABS.map(t => {
               const active = tab === t.id
@@ -257,6 +266,7 @@ export default function NewsPage() {
 
         {/* Date Filter Bar */}
         <div className="rounded-xl px-4 py-3 flex flex-wrap items-center gap-3"
+          data-tour="news-date-filter"
           style={{ background: surfaceBg, border: `1px solid ${cardBorder}` }}>
           <div className="flex items-center gap-1.5 mr-1" style={{ color: textSub }}>
             <Calendar size={14} />
@@ -312,7 +322,7 @@ export default function NewsPage() {
 
         {/* Content */}
         {!loading && !error && (
-          <>
+          <div data-tour="news-articles">
             {/* Featured — page 1 only */}
             {featured && (
               <a href={featured.url} target="_blank" rel="noopener noreferrer"
@@ -420,7 +430,7 @@ export default function NewsPage() {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
     </div>

@@ -1,6 +1,8 @@
 import { useState, useEffect, memo } from 'react'
 import { Activity, TrendingUp, Flame, Star, Rocket, Loader2, ImageOff } from 'lucide-react'
 import { useTheme } from '../context/ThemeContext'
+import PageTour from '../components/onboarding/PageTour'
+import { trendingTourSteps } from '../components/onboarding/tourSteps'
 
 const RAWG_KEY = 'cf38811b97cf43bbb8d88c606ed4e73c'
 const RAWG_BASE = 'https://api.rawg.io/api/games'
@@ -137,6 +139,12 @@ export default function TrendingPage() {
 
   return (
     <div className="flex flex-col gap-5 animate-fade-in p-6 md:p-8">
+      {/* ── First-time guided tour ── */}
+      <PageTour
+        pageKey="trending"
+        steps={trendingTourSteps}
+        ready={!loading}
+      />
 
       {/* Page header */}
       <div className="flex items-end justify-between flex-wrap gap-2">
@@ -163,6 +171,7 @@ export default function TrendingPage() {
 
       {/* Hero banner */}
       <div className="rounded-3xl overflow-hidden relative min-h-[150px] border border-purple-500/10"
+        data-tour="trending-hero"
         style={{ background: isDark
           ? 'linear-gradient(135deg, rgba(124,58,237,0.16), rgba(168,85,247,0.06))'
           : 'linear-gradient(135deg, #f43f5e18, #8b5cf618)' }}>
@@ -219,7 +228,7 @@ export default function TrendingPage() {
       </div>
 
       {/* 2x2 trend grid */}
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid md:grid-cols-2 gap-4" data-tour="trending-grid">
 
         {/* Trending Now */}
         <TrendCard title="Trending Now" icon={TrendingUp} color="#f43f5e" items={trending} loading={loading} error={error}

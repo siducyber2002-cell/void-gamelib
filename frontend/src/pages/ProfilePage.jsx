@@ -3,6 +3,8 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import axios from 'axios'
 import toast from 'react-hot-toast'
+import PageTour from '../components/onboarding/PageTour'
+import { profileTourSteps } from '../components/onboarding/tourSteps'
 import {
   Edit3, MapPin, Star, Check, X, Camera, Loader2, Upload, Trash2,
   Gamepad2, Trophy, Users, Zap, Clock, Plus, Play, Newspaper,
@@ -251,6 +253,12 @@ export default function ProfilePage() {
       className="relative min-h-screen h-full animate-fade-in"
       style={{ background: pageBg, fontFamily: 'DM Sans, sans-serif' }}
     >
+      {/* ── First-time guided tour ── */}
+      <PageTour
+        pageKey="profile"
+        steps={profileTourSteps}
+        ready={!loadingStats}
+      />
       <style>{`
         @keyframes avatarPulse {
           0%   { transform: scale(0.85); opacity: 0.5; }
@@ -346,7 +354,7 @@ export default function ProfilePage() {
           <div className="px-4 sm:px-6 pb-6 relative">
             {/* Avatar + actions row */}
             <div className="flex items-end justify-between -mt-10 mb-4">
-              <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center group/avatar">
+              <div className="relative w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center group/avatar" data-tour="profile-avatar">
                 <span className="absolute inset-0 rounded-2xl avatar-ring"       style={{ background: accent + '30' }} />
                 <span className="absolute inset-0 rounded-2xl avatar-ring-delay" style={{ background: accent + '30' }} />
                 <div
@@ -393,6 +401,7 @@ export default function ProfilePage() {
 
               {!editing ? (
                 <button onClick={() => setEditing(true)}
+                  data-tour="profile-edit-btn"
                   className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
                   style={{ background: tabBarBg, border: `1px solid ${cardBorder}`, color: textSub }}>
                   <Edit3 size={13} /> Edit Profile
@@ -460,7 +469,7 @@ export default function ProfilePage() {
             </div>
 
             {/* ── XP Bar ── */}
-            <div className="mt-5">
+            <div className="mt-5" data-tour="profile-xp-bar">
               <div className="flex items-center justify-between mb-1.5">
                 <div className="flex items-center gap-1.5">
                   <Zap size={13} style={{ color: accent }} />
@@ -490,7 +499,7 @@ export default function ProfilePage() {
         </div>
 
         {/* ── Stats ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3" data-tour="profile-stats">
           {STATS.map(stat => (
             <div key={stat.label} className="rounded-2xl p-3 sm:p-4 text-center flex flex-col items-center gap-1.5 transition-all duration-200 hover:-translate-y-1 cursor-default"
               style={{ background: cardBg, border: `1px solid ${cardBorder}`, boxShadow: cardShadow }}>
