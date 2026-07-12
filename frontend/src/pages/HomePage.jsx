@@ -132,16 +132,6 @@ const GLOBAL_STYLE = (t) => `
 
 // ─── ACCENT PALETTE ───────────────────────────────────────────────────────────
 const ACCENTS = ['#a855f7','#7c3aed','#6366f1','#ec4899','#3b82f6','#8b5cf6','#c026d3','#2563eb']
-
-// Award watched_trailer XP once per game per session — otherwise closing and
-// reopening the same trailer would farm XP indefinitely. Mirrors NewsPage's
-// awardedUrls pattern for read_news.
-const awardedTrailers = new Set()
-function awardTrailerXp(key, title) {
-  if (!key || awardedTrailers.has(key)) return
-  awardedTrailers.add(key)
-  awardXP('watched_trailer', title)
-}
 const accentFor = (id) => ACCENTS[Math.abs(id) % ACCENTS.length]
 
 // ─── CATEGORIES ───────────────────────────────────────────────────────────────
@@ -810,7 +800,7 @@ export default function HomePage() {
   const openTrailer=useCallback((game,coverUrl)=>{
     setTrailerGame(game)
     setTrailerCover(coverUrl||null)
-    awardTrailerXp(game?.rawgSlug || game?.id, game?.title)
+    awardXP('watched_trailer', game?.title)
   },[])
   const closeTrailer=useCallback(()=>setTrailerGame(null),[])
 
