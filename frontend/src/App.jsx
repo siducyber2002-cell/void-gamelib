@@ -6,7 +6,6 @@ import { ThemeProvider } from './context/ThemeContext'
 import { LibraryProvider } from './context/LibraryContext'
 import { XPToastProvider } from './components/XPToast'
 import { ChatNotifyProvider } from './context/ChatNotifyContext'
-import BifrostTransition from './components/BifrostTransition'
 
 import Layout from './components/layout/Layout'
 import LoginPage from './pages/LoginPage'
@@ -193,11 +192,6 @@ export default function App() {
                 }} />,
                 document.body
               )}
-              {/* Mounted once, outside <Routes>, so it survives the login -> home
-                  route swap it triggers. LoginPage calls bifrostBus.trigger()
-                  on successful login; this plays the beam, swaps the route to
-                  "/" underneath itself, then dissolves to reveal it. */}
-              <BifrostTransition />
               {/* ChatNotifyProvider needs to be inside BrowserRouter (it uses
                   useNavigate to jump straight to a DM when a toast is
                   clicked) but wraps every route so its socket + toast stay
