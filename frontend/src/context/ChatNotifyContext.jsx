@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { MessageCircle, UserPlus, Users } from 'lucide-react'
+import { MessageCircle, UserPlus, Users, AtSign } from 'lucide-react'
 import { useAuth } from './AuthContext'
 import { xpEventBus } from '../components/XPToast'
 
@@ -14,6 +14,7 @@ const TYPE_META = {
   new_dm:          { icon: MessageCircle, accent: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #06b6d4)' },
   friend_request:  { icon: UserPlus,      accent: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #059669)' },
   friend_accepted: { icon: Users,         accent: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #06b6d4)' },
+  group_mention:   { icon: AtSign,        accent: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #a855f7)' },
 }
 
 function NotifyToastCard({ t, type, avatarUrl, username, subtitle, onOpen }) {
@@ -74,6 +75,7 @@ const EVENT_CONFIG = {
   new_dm:            (d) => ({ subtitle: d.content, path: `/friends?tab=Friends&dm=${d.sender_id}` }),
   friend_request:    (d) => ({ subtitle: 'Sent you a friend request', path: '/friends?tab=Requests' }),
   friend_accepted:   (d) => ({ subtitle: 'Accepted your friend request', path: '/friends?tab=Friends' }),
+  group_mention:     (d) => ({ subtitle: `Mentioned you in ${d.group_name}`, path: `/community/${d.group_id}` }),
 }
 
 // Dedupe key so a request/accept only ever toasts once — whether it arrives
