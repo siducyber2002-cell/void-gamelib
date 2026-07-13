@@ -832,6 +832,14 @@ def delete_group_message(
         GroupMessage.author_id == current_user.id,
     ).first()
     if msg:
+        # reply_to_id has no ON DELETE behavior at the DB level, so any
+        # message that replied to this one would fail its FK check the
+        # moment this row is gone. Detach those replies first — their
+        # reply preview just disappears, the reply text itself is
+        # untouched. (Reactions on THIS message are handled separately:
+        # db.delete() on an ORM instance honors the cascade="all, delete"
+        # on GroupMessage.reactions, so those get cleaned up automatically.)
+        db.query(GroupMessage).filter(GroupMessage.reply_to_id == msg_id).update({"reply_to_id": None})
         db.delete(msg)
         db.commit()
 
@@ -852,6 +860,14 @@ def clear_group_messages(
     if group.owner_id != current_user.id and membership.role != GroupRole.admin:
         raise HTTPException(403, "Only the group owner or an admin can clear the chat")
 
+    # query.delete() is a bulk SQL DELETE — it does NOT go through the ORM,
+    # so the cascade="all, delete" on GroupMessage.reactions never fires
+    # (that only triggers on session.delete() of individual objects). Left
+    # alone, this would try to delete messages while reaction rows still
+    # reference them via message_id, and fail its FK check as soon as any
+    # message in the group had a reaction on it. Clear reactions first.
+    msg_ids_subq = db.query(GroupMessage.id).filter(GroupMessage.group_id == group_id).subquery()
+    db.query(GroupMessageReaction).filter(GroupMessageReaction.message_id.in_(msg_ids_subq)).delete(synchronize_session=False)
     db.query(GroupMessage).filter(GroupMessage.group_id == group_id).delete(synchronize_session=False)
     db.commit()
 
