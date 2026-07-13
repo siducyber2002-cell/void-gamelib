@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect, Query, H
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, and_
 from typing import List, Dict
-from db.database import get_db
+from db.database import get_db, SessionLocal
 from models.models import DirectMessage, User
 from schemas.schemas import DMMessageOut, DMSend
 from utils.auth import get_current_user
@@ -25,13 +25,23 @@ def get_room_id(user1: int, user2: int) -> str:
     return "_".join(map(str, sorted([user1, user2])))
 
 
-def get_user_from_token(token: str, db: Session) -> User | None:
+def get_user_from_token(token: str) -> User | None:
+    """
+    Opens and closes its own session for exactly this one lookup. Deliberately
+    NOT given a `db: Session` from the caller — on the HTTP routes below that
+    would be fine (a request-scoped session that closes in milliseconds), but
+    on the websocket routes it would mean the SELECT here opens a transaction
+    on a session that then stays alive, uncommitted, for the entire websocket
+    connection (potentially hours). That's what caused a 'users' row to sit
+    locked in an idle-in-transaction session and block a schema migration.
+    """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = int(payload.get("sub"))
-        return db.query(User).filter(User.id == user_id).first()
     except (JWTError, Exception):
         return None
+    with SessionLocal() as db:
+        return db.query(User).filter(User.id == user_id).first()
 
 
 # ─── WebSocket endpoint ───────────────────────────────────
@@ -40,10 +50,9 @@ async def dm_websocket(
     websocket: WebSocket,
     room_id: str,
     token: str = Query(...),
-    db: Session = Depends(get_db),
 ):
     # Authenticate
-    user = get_user_from_token(token, db)
+    user = get_user_from_token(token)
     if not user:
         await websocket.close(code=4001)
         return
@@ -84,16 +93,18 @@ async def dm_websocket(
                 if not content:
                     continue
 
-                # Save to DB
-                msg = DirectMessage(
-                    sender_id=user.id,
-                    receiver_id=other_id,
-                    room_id=room_id,
-                    content=content,
-                )
-                db.add(msg)
-                db.commit()
-                db.refresh(msg)
+                # Save to DB — a fresh session scoped to just this write, not
+                # one held open for the whole websocket connection.
+                with SessionLocal() as db:
+                    msg = DirectMessage(
+                        sender_id=user.id,
+                        receiver_id=other_id,
+                        room_id=room_id,
+                        content=content,
+                    )
+                    db.add(msg)
+                    db.commit()
+                    db.refresh(msg)
 
                 # Build payload
                 payload = {
@@ -137,9 +148,8 @@ async def dm_websocket(
 async def notify_websocket(
     websocket: WebSocket,
     token: str = Query(...),
-    db: Session = Depends(get_db),
 ):
-    user = get_user_from_token(token, db)
+    user = get_user_from_token(token)
     if not user:
         await websocket.close(code=4001)
         return

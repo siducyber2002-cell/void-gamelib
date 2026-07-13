@@ -256,12 +256,30 @@ def heartbeat(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Pinged every ~20s by the frontend while the app is open (see
+    """
+    Pinged every ~20s by the frontend while the app is open (see
     Topbar.jsx). Keeps User.last_seen fresh so User.online reflects real
-    presence."""
-    current_user.last_seen = datetime.now(timezone.utc)
+    presence, and also accumulates total_time_seconds — the gap between
+    this ping and the previous last_seen is added to the running total.
+
+    Capped at HEARTBEAT_MAX_GAP_SECONDS so a stale tab that reconnects
+    hours later (laptop closed, sleep, etc.) doesn't get credited with
+    hours of "time on site" it didn't actually spend active — it only ever
+    adds up to one ping interval's worth of slack per call.
+    """
+    HEARTBEAT_MAX_GAP_SECONDS = 40  # a little above the ~20s ping interval, to absorb network jitter
+
+    now = datetime.now(timezone.utc)
+    if current_user.last_seen:
+        last = current_user.last_seen
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+        gap = (now - last).total_seconds()
+        current_user.total_time_seconds += max(0, min(gap, HEARTBEAT_MAX_GAP_SECONDS))
+
+    current_user.last_seen = now
     db.commit()
-    return {"ok": True}
+    return {"ok": True, "total_time_seconds": current_user.total_time_seconds}
 
 
 @router.get("/streak", response_model=StreakOut)

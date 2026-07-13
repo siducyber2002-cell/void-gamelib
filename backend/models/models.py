@@ -68,6 +68,12 @@ class User(Base):
     # ── Presence ──
     last_seen = Column(DateTime(timezone=True), nullable=True)
 
+    # ── Time on site ──
+    # Cumulative seconds spent actively using the app, built up by the
+    # heartbeat endpoint (see auth.py). Not wall-clock "account age" — only
+    # counts time while the tab was actually open and pinging.
+    total_time_seconds = Column(Integer, default=0, nullable=False)
+
     # ── Onboarding ──
     # Page keys (e.g. "home", "dashboard") whose first-time guided tour this
     # user has already finished or skipped. Checked by PageTour.jsx via

@@ -77,6 +77,7 @@ class UserOut(BaseModel):
     xp:            int
     current_streak: int = 0
     longest_streak: int = 0
+    total_time_seconds: int = 0
     onboarding_seen_pages: List[str] = []
     created_at:    datetime
 
