@@ -295,7 +295,7 @@ class Notification(Base):
 
     id         = Column(Integer, primary_key=True, index=True)
     user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    type       = Column(String(50), nullable=False)   # "xp" | "level_up" | "friend_request" | "friend_accepted" | "new_message"
+    type       = Column(String(50), nullable=False)   # "xp" | "level_up" | "friend_request" | "friend_accepted" | "new_message" | "group_mention"
     message    = Column(String(500), nullable=False)
     xp_earned  = Column(Integer, default=0)
     action     = Column(String(100), default="")
@@ -357,8 +357,64 @@ class GroupMessage(Base):
     attachment_name  = Column(String(300), default="")
     attachment_size  = Column(Integer,     default=0)     # bytes
 
-    group  = relationship("Group", back_populates="messages")
-    author = relationship("User")
+    # ── reply / thread ──
+    # Self-referential FK. `remote_side=[id]` tells SQLAlchemy which side
+    # is the "one" in this many-to-one (a message has at most one parent,
+    # but a parent can have many replies) — without it, SQLAlchemy can't
+    # tell the two ends of a self-join apart.
+    reply_to_id = Column(Integer, ForeignKey("group_messages.id"), nullable=True, index=True)
+    reply_to    = relationship("GroupMessage", remote_side=[id])
+
+    # ── edit ──
+    edited_at = Column(DateTime(timezone=True), nullable=True)
+
+    # ── pin (owner/admin only, same permission tier as Clear Chat) ──
+    pinned       = Column(Boolean, default=False, index=True)
+    pinned_at    = Column(DateTime(timezone=True), nullable=True)
+    pinned_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+
+    group     = relationship("Group", back_populates="messages")
+    author    = relationship("User", foreign_keys=[author_id])
+    reactions = relationship("GroupMessageReaction", back_populates="message", cascade="all, delete")
+
+
+class GroupMessageReaction(Base):
+    """One row per (message, user, emoji). A user can react to the same
+    message with several different emoji, but not stack the same emoji
+    twice — that's a toggle (POST again to remove it), not a counter."""
+    __tablename__ = "group_message_reactions"
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", "emoji", name="uq_group_msg_reaction"),
+    )
+
+    id         = Column(Integer, primary_key=True, index=True)
+    message_id = Column(Integer, ForeignKey("group_messages.id"), nullable=False, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    emoji      = Column(String(10), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    message = relationship("GroupMessage", back_populates="reactions")
+    user    = relationship("User")
+
+
+class GroupTypingState(Base):
+    """Poll-friendly typing indicator. This stack has no websockets — chat
+    already works on a 4s poll — so instead of a live push, the frontend
+    upserts this row every few keystrokes and the group polls it back on
+    the same interval. 'updated_at' is read as a liveness timestamp at
+    query time (anything older than a few seconds is treated as "stopped
+    typing"), so there's no separate cleanup job needed."""
+    __tablename__ = "group_typing_state"
+    __table_args__ = (
+        UniqueConstraint("group_id", "user_id", name="uq_group_typing_user"),
+    )
+
+    id         = Column(Integer, primary_key=True, index=True)
+    group_id   = Column(Integer, ForeignKey("groups.id"), nullable=False, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User")
 
 
 class GroupMedia(Base):

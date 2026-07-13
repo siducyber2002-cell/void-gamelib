@@ -339,6 +339,37 @@ class GroupJoinRequestOut(BaseModel):
 
 class GroupMessageCreate(BaseModel):
     content: str
+    reply_to_id: Optional[int] = None
+
+
+class GroupMessageEdit(BaseModel):
+    content: str
+
+
+# ── Reactions ──
+class ReactionToggle(BaseModel):
+    emoji: str
+
+
+class GroupMessageReactionOut(BaseModel):
+    emoji:    str
+    count:    int
+    reacted:  bool = False   # did the CURRENT user react with this emoji?
+
+    model_config = {"from_attributes": True}
+
+
+# ── Small, non-recursive preview of a message being replied to. Deliberately
+# thin (no nested reply/reactions) — a reply chain only ever needs to show
+# one level up in the UI, and a full nested GroupMessageOut here would risk
+# unbounded recursion for a long reply chain.
+class GroupMessageReplyOut(BaseModel):
+    id:               int
+    content:          str
+    author_username:  str
+    attachment_type:  str = ""
+
+    model_config = {"from_attributes": True}
 
 
 class GroupMessageOut(BaseModel):
@@ -352,6 +383,18 @@ class GroupMessageOut(BaseModel):
     attachment_type:  str = ""   # "image" | "voice" | "file" | ""
     attachment_name:  str = ""
     attachment_size:  int = 0
+    edited_at:        Optional[datetime] = None
+    pinned:           bool = False
+    reply_to:         Optional[GroupMessageReplyOut] = None
+    reactions:        List[GroupMessageReactionOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+# ── Typing indicator ──
+class TypingUserOut(BaseModel):
+    id:       int
+    username: str
 
     model_config = {"from_attributes": True}
 

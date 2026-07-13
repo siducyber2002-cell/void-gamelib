@@ -9,7 +9,13 @@ from db.database import engine, Base
 from models import models  # ensure all models are imported before create_all
 
 # Import routers
-from routers import auth, games, library, friends, community, achievements, dashboard, news, reviews, dm, xp, profile
+# NOTE: "achievements" router intentionally NOT imported. Nothing in the
+# frontend calls /api/achievements/* anymore (the Achievements page was
+# replaced by the Leaderboard page). The underlying Achievement /
+# UserAchievement tables are still very much in use though — dashboard.py
+# queries UserAchievement directly for the DashboardStats.achievements
+# count — so only this unused API surface is being removed, not the data.
+from routers import auth, games, library, friends, community, dashboard, news, reviews, dm, xp, profile
 
 # ─── Create tables ───────────────────────────────────────
 Base.metadata.create_all(bind=engine)
@@ -44,7 +50,6 @@ app.include_router(games.router)
 app.include_router(library.router)
 app.include_router(friends.router)
 app.include_router(community.router)
-app.include_router(achievements.router)
 app.include_router(dashboard.router)
 app.include_router(news.router)
 app.include_router(reviews.router)

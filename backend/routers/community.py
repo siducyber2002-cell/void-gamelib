@@ -1,18 +1,22 @@
+import re
 import uuid
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
-from typing import List
+from typing import List, Optional
 from db.database import get_db
 from models.models import (
-    Message, User, Friendship, FriendStatus,
+    Message, User, Friendship, FriendStatus, Notification,
     Group, GroupMembership, GroupMessage, GroupMedia, GroupRole,
     GroupJoinRequest, GroupRequestStatus,
+    GroupMessageReaction, GroupTypingState,
 )
 from schemas.schemas import (
     MessageCreate, MessageOut,
     GroupCreate, GroupOut, GroupMemberOut,
-    GroupMessageOut,
+    GroupMessageOut, GroupMessageEdit, GroupMessageReplyOut, GroupMessageReactionOut,
+    ReactionToggle, TypingUserOut,
     GroupMediaOut,
     GroupJoinRequestOut,
 )
@@ -31,6 +35,17 @@ GROUP_ATTACHMENT_BUCKET = "group-attachments"
 MAX_ATTACHMENT_MB = 15
 MAX_ATTACHMENT_BYTES = MAX_ATTACHMENT_MB * 1024 * 1024
 
+# How long a typing-state row is considered "live" once read back. The
+# frontend re-pings every few keystrokes (well under this), so a row this
+# fresh means someone is actively typing right now; anything older just
+# means they stopped and nothing swept it up yet.
+TYPING_ACTIVE_SECONDS = 6
+
+# @username mentions — usernames are min 3 chars (see UserRegister validator)
+# but we don't bother re-enforcing that here; an unmatched mention just
+# resolves to zero users and is a no-op.
+MENTION_RE = re.compile(r"@(\w+)")
+
 
 def _attachment_kind(content_type: str) -> str:
     """Classify an uploaded file so the frontend knows how to render it —
@@ -47,6 +62,7 @@ def _safe_extension(filename: str, fallback: str = "bin") -> str:
     if filename and "." in filename:
         return filename.rsplit(".", 1)[-1][:10]  # cap absurdly long "extensions"
     return fallback
+
 
 router = APIRouter(prefix="/api/community", tags=["Community"])
 
@@ -168,6 +184,115 @@ def _serialize_group(
         has_pending_request=has_pending_request,
         pending_requests_count=pending_requests_count,
     )
+
+
+def _serialize_group_messages(msgs: list[GroupMessage], current_user: User, db: Session) -> List[GroupMessageOut]:
+    """Batch-serialize a list of GroupMessage rows into GroupMessageOut,
+    including reactions and reply-to previews.
+
+    Both of those need extra queries, and this is called from list
+    endpoints that can return up to ~50-200 messages at once — so this
+    batches reactions and reply-parents into ONE query each for the whole
+    list, rather than 1-2 extra queries PER message (same N+1 concern
+    already flagged elsewhere in this file for group listing)."""
+    if not msgs:
+        return []
+
+    msg_ids = [m.id for m in msgs]
+
+    # Reactions: one query for the whole batch, aggregated in Python since
+    # we need per-message per-emoji counts AND whether the current user is
+    # among the reactors — a GROUP BY alone can't hand back both shapes at
+    # once without a second correlated query anyway.
+    reaction_rows = (
+        db.query(GroupMessageReaction)
+        .filter(GroupMessageReaction.message_id.in_(msg_ids))
+        .all()
+    )
+    reactions_by_msg: dict[int, dict[str, dict]] = {}
+    for r in reaction_rows:
+        bucket = reactions_by_msg.setdefault(r.message_id, {})
+        entry = bucket.setdefault(r.emoji, {"emoji": r.emoji, "count": 0, "reacted": False})
+        entry["count"] += 1
+        if r.user_id == current_user.id:
+            entry["reacted"] = True
+
+    # Reply-to previews: batch-fetch the parent messages referenced by this
+    # batch instead of a lazy-load per message.
+    reply_ids = {m.reply_to_id for m in msgs if m.reply_to_id}
+    reply_lookup = {}
+    if reply_ids:
+        parents = (
+            db.query(GroupMessage)
+            .options(joinedload(GroupMessage.author))
+            .filter(GroupMessage.id.in_(reply_ids))
+            .all()
+        )
+        reply_lookup = {p.id: p for p in parents}
+
+    out = []
+    for m in msgs:
+        reply_preview = None
+        if m.reply_to_id and m.reply_to_id in reply_lookup:
+            parent = reply_lookup[m.reply_to_id]
+            reply_preview = GroupMessageReplyOut(
+                id=parent.id,
+                content=parent.content,
+                author_username=parent.author.username,
+                attachment_type=parent.attachment_type,
+            )
+        out.append(GroupMessageOut(
+            id=m.id,
+            group_id=m.group_id,
+            author_id=m.author_id,
+            content=m.content,
+            created_at=m.created_at,
+            author=m.author,
+            attachment_url=m.attachment_url,
+            attachment_type=m.attachment_type,
+            attachment_name=m.attachment_name,
+            attachment_size=m.attachment_size,
+            edited_at=m.edited_at,
+            pinned=m.pinned,
+            reply_to=reply_preview,
+            reactions=[
+                GroupMessageReactionOut(**entry)
+                for entry in reactions_by_msg.get(m.id, {}).values()
+            ],
+        ))
+    return out
+
+
+def _process_mentions(text: str, group: Group, author: User, db: Session):
+    """Parse @username tokens out of a just-sent message and drop a
+    Notification row (type="group_mention") for each mentioned member who
+    isn't the author. Reuses the existing generic Notification model/feed
+    (same one xp/friend notifications already flow through in the bell) —
+    no new notification plumbing needed."""
+    if not text:
+        return
+    usernames = set(MENTION_RE.findall(text))
+    if not usernames:
+        return
+
+    member_ids = {m.user_id for m in group.memberships}
+    mentioned_users = (
+        db.query(User)
+        .filter(User.username.in_(usernames), User.id.in_(member_ids), User.id != author.id)
+        .all()
+    )
+    if not mentioned_users:
+        return
+
+    for u in mentioned_users:
+        db.add(Notification(
+            user_id=u.id,
+            type="group_mention",
+            message=f"{author.username} mentioned you in {group.name}",
+            action="group_mention",
+            detail=str(group.id),
+        ))
+    db.commit()
 
 
 def _get_group_or_404(group_id: int, db: Session) -> Group:
@@ -521,6 +646,11 @@ def list_members(
     ]
 
 
+# ── Messages ─────────────────────────────────────────────────────────────
+# NOTE ON ROUTE ORDER: the literal-path routes below (/messages/pinned,
+# /messages/search) are declared BEFORE the /messages/{msg_id} routes.
+# FastAPI/Starlette matches routes in registration order, so a param route
+# declared first could shadow "pinned"/"search" as if they were a msg_id.
 @router.get("/groups/{group_id}/messages", response_model=List[GroupMessageOut])
 def get_group_messages(
     group_id: int,
@@ -530,7 +660,7 @@ def get_group_messages(
 ):
     group = _get_group_or_404(group_id, db)
     _require_member(group, current_user)
-    return (
+    msgs = (
         db.query(GroupMessage)
         .options(joinedload(GroupMessage.author))
         .filter(GroupMessage.group_id == group_id)
@@ -538,12 +668,55 @@ def get_group_messages(
         .limit(limit)
         .all()[::-1]
     )
+    return _serialize_group_messages(msgs, current_user, db)
+
+
+@router.get("/groups/{group_id}/messages/pinned", response_model=List[GroupMessageOut])
+def list_pinned_messages(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    _require_member(group, current_user)
+    msgs = (
+        db.query(GroupMessage)
+        .options(joinedload(GroupMessage.author))
+        .filter(GroupMessage.group_id == group_id, GroupMessage.pinned == True)  # noqa: E712
+        .order_by(GroupMessage.pinned_at.desc())
+        .all()
+    )
+    return _serialize_group_messages(msgs, current_user, db)
+
+
+@router.get("/groups/{group_id}/messages/search", response_model=List[GroupMessageOut])
+def search_group_messages(
+    group_id: int,
+    q: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    _require_member(group, current_user)
+    msgs = (
+        db.query(GroupMessage)
+        .options(joinedload(GroupMessage.author))
+        .filter(
+            GroupMessage.group_id == group_id,
+            GroupMessage.content.ilike(f"%{q}%"),
+        )
+        .order_by(GroupMessage.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    return _serialize_group_messages(msgs, current_user, db)
 
 
 @router.post("/groups/{group_id}/messages", response_model=GroupMessageOut, status_code=201)
 async def send_group_message(
     group_id: int,
     content: str = Form(""),
+    reply_to_id: Optional[int] = Form(None),
     file: UploadFile | None = File(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -554,6 +727,14 @@ async def send_group_message(
     text = content.strip()
     if not text and not file:
         raise HTTPException(400, "Message needs text or an attachment")
+
+    if reply_to_id is not None:
+        parent = db.query(GroupMessage).filter(
+            GroupMessage.id == reply_to_id,
+            GroupMessage.group_id == group_id,
+        ).first()
+        if not parent:
+            raise HTTPException(400, "Original message not found")
 
     attachment_url  = ""
     attachment_type = ""
@@ -584,12 +765,58 @@ async def send_group_message(
         group_id=group_id, author_id=current_user.id, content=text,
         attachment_url=attachment_url, attachment_type=attachment_type,
         attachment_name=attachment_name, attachment_size=attachment_size,
+        reply_to_id=reply_to_id,
     )
     db.add(msg)
     db.commit()
     db.refresh(msg)
+
+    _process_mentions(text, group, current_user, db)
+
+    # Sending clears the sender's own typing indicator immediately, instead
+    # of waiting out TYPING_ACTIVE_SECONDS for it to expire on its own.
+    typing_state = db.query(GroupTypingState).filter(
+        GroupTypingState.group_id == group_id,
+        GroupTypingState.user_id == current_user.id,
+    ).first()
+    if typing_state:
+        db.delete(typing_state)
+        db.commit()
+
     msg = db.query(GroupMessage).options(joinedload(GroupMessage.author)).filter(GroupMessage.id == msg.id).first()
-    return msg
+    return _serialize_group_messages([msg], current_user, db)[0]
+
+
+@router.patch("/groups/{group_id}/messages/{msg_id}", response_model=GroupMessageOut)
+def edit_group_message(
+    group_id: int,
+    msg_id: int,
+    payload: GroupMessageEdit,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    msg = db.query(GroupMessage).filter(
+        GroupMessage.id == msg_id,
+        GroupMessage.group_id == group_id,
+    ).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+    if msg.author_id != current_user.id:
+        raise HTTPException(403, "You can only edit your own messages")
+
+    text = payload.content.strip()
+    if not text and not msg.attachment_url:
+        raise HTTPException(400, "Message can't be empty")
+
+    msg.content = text
+    msg.edited_at = datetime.now(timezone.utc)
+    db.commit()
+
+    group = _get_group_or_404(group_id, db)
+    _process_mentions(text, group, current_user, db)
+
+    msg = db.query(GroupMessage).options(joinedload(GroupMessage.author)).filter(GroupMessage.id == msg_id).first()
+    return _serialize_group_messages([msg], current_user, db)[0]
 
 
 @router.delete("/groups/{group_id}/messages/{msg_id}", status_code=204)
@@ -627,6 +854,163 @@ def clear_group_messages(
 
     db.query(GroupMessage).filter(GroupMessage.group_id == group_id).delete(synchronize_session=False)
     db.commit()
+
+
+# ── Reactions ─────────────────────────────────────────────────────────────
+@router.post("/groups/{group_id}/messages/{msg_id}/reactions", response_model=GroupMessageOut)
+def toggle_reaction(
+    group_id: int,
+    msg_id: int,
+    payload: ReactionToggle,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    _require_member(group, current_user)
+
+    msg = db.query(GroupMessage).filter(
+        GroupMessage.id == msg_id,
+        GroupMessage.group_id == group_id,
+    ).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+
+    emoji = payload.emoji.strip()
+    if not emoji:
+        raise HTTPException(400, "Emoji required")
+
+    existing = db.query(GroupMessageReaction).filter(
+        GroupMessageReaction.message_id == msg_id,
+        GroupMessageReaction.user_id == current_user.id,
+        GroupMessageReaction.emoji == emoji,
+    ).first()
+    if existing:
+        db.delete(existing)   # toggle off
+    else:
+        db.add(GroupMessageReaction(message_id=msg_id, user_id=current_user.id, emoji=emoji))
+    db.commit()
+
+    msg = db.query(GroupMessage).options(joinedload(GroupMessage.author)).filter(GroupMessage.id == msg_id).first()
+    return _serialize_group_messages([msg], current_user, db)[0]
+
+
+# ── Pin ───────────────────────────────────────────────────────────────────
+# Same permission tier as Clear Chat — owner or admin only, so the pinned
+# rail can't get spammed by every member.
+@router.post("/groups/{group_id}/messages/{msg_id}/pin", response_model=GroupMessageOut)
+def pin_message(
+    group_id: int,
+    msg_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
+
+    msg = db.query(GroupMessage).filter(
+        GroupMessage.id == msg_id,
+        GroupMessage.group_id == group_id,
+    ).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+
+    msg.pinned = True
+    msg.pinned_at = datetime.now(timezone.utc)
+    msg.pinned_by_id = current_user.id
+    db.commit()
+
+    msg = db.query(GroupMessage).options(joinedload(GroupMessage.author)).filter(GroupMessage.id == msg_id).first()
+    return _serialize_group_messages([msg], current_user, db)[0]
+
+
+@router.delete("/groups/{group_id}/messages/{msg_id}/pin", response_model=GroupMessageOut)
+def unpin_message(
+    group_id: int,
+    msg_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
+
+    msg = db.query(GroupMessage).filter(
+        GroupMessage.id == msg_id,
+        GroupMessage.group_id == group_id,
+    ).first()
+    if not msg:
+        raise HTTPException(404, "Message not found")
+
+    msg.pinned = False
+    msg.pinned_at = None
+    msg.pinned_by_id = None
+    db.commit()
+
+    msg = db.query(GroupMessage).options(joinedload(GroupMessage.author)).filter(GroupMessage.id == msg_id).first()
+    return _serialize_group_messages([msg], current_user, db)[0]
+
+
+# ── Typing indicators (poll-friendly — see GroupTypingState) ────────────
+@router.post("/groups/{group_id}/typing", status_code=204)
+def ping_typing(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    _require_member(group, current_user)
+
+    state = db.query(GroupTypingState).filter(
+        GroupTypingState.group_id == group_id,
+        GroupTypingState.user_id == current_user.id,
+    ).first()
+    if state:
+        state.updated_at = datetime.now(timezone.utc)
+    else:
+        db.add(GroupTypingState(group_id=group_id, user_id=current_user.id))
+    db.commit()
+
+
+@router.delete("/groups/{group_id}/typing", status_code=204)
+def clear_typing(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Called when the input is cleared/blurred so the indicator doesn't
+    linger for the full TYPING_ACTIVE_SECONDS after someone stops typing
+    without sending."""
+    state = db.query(GroupTypingState).filter(
+        GroupTypingState.group_id == group_id,
+        GroupTypingState.user_id == current_user.id,
+    ).first()
+    if state:
+        db.delete(state)
+        db.commit()
+
+
+@router.get("/groups/{group_id}/typing", response_model=List[TypingUserOut])
+def get_typing(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    group = _get_group_or_404(group_id, db)
+    _require_member(group, current_user)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=TYPING_ACTIVE_SECONDS)
+    rows = (
+        db.query(GroupTypingState)
+        .options(joinedload(GroupTypingState.user))
+        .filter(
+            GroupTypingState.group_id == group_id,
+            GroupTypingState.user_id != current_user.id,
+            GroupTypingState.updated_at >= cutoff,
+        )
+        .all()
+    )
+    return [TypingUserOut(id=r.user.id, username=r.user.username) for r in rows]
 
 
 @router.get("/groups/{group_id}/media", response_model=List[GroupMediaOut])
