@@ -28,6 +28,10 @@ from routers.profile import (
     supabase, ALLOWED_CONTENT_TYPES, MAX_IMAGE_BYTES, MAX_IMAGE_MB,
     _extension_for, _delete_stored_object,
 )
+# Same global per-user socket dm.py already uses to push "new_dm" toasts
+# even when the recipient isn't in that room — reused here so a
+# @mention shows up live in the bell instead of waiting on Topbar's poll.
+from utils.ws_notify import push_to_user
 
 GROUP_COVER_BUCKET = "group-covers"
 GROUP_MEDIA_BUCKET = "group-media"
@@ -263,12 +267,15 @@ def _serialize_group_messages(msgs: list[GroupMessage], current_user: User, db: 
     return out
 
 
-def _process_mentions(text: str, group: Group, author: User, db: Session):
-    """Parse @username tokens out of a just-sent message and drop a
+async def _process_mentions(text: str, group: Group, author: User, msg_id: int, db: Session):
+    """Parse @username tokens out of a just-sent message, drop a
     Notification row (type="group_mention") for each mentioned member who
-    isn't the author. Reuses the existing generic Notification model/feed
-    (same one xp/friend notifications already flow through in the bell) —
-    no new notification plumbing needed."""
+    isn't the author, AND push it live over the same global /ws/notify
+    socket dm.py already uses for "new_dm" — so it shows up in the bell
+    immediately instead of waiting on Topbar's poll interval. The DB row
+    is still written either way, so a mention still shows up on next poll
+    even for a recipient who's offline right now (push_to_user() is a
+    no-op if they have no open socket)."""
     if not text:
         return
     usernames = set(MENTION_RE.findall(text))
@@ -284,6 +291,8 @@ def _process_mentions(text: str, group: Group, author: User, db: Session):
     if not mentioned_users:
         return
 
+    message_preview = text if len(text) <= 200 else text[:197] + "…"
+
     for u in mentioned_users:
         db.add(Notification(
             user_id=u.id,
@@ -293,6 +302,22 @@ def _process_mentions(text: str, group: Group, author: User, db: Session):
             detail=str(group.id),
         ))
     db.commit()
+
+    for u in mentioned_users:
+        try:
+            await push_to_user(u.id, {
+                "type":               "group_mention",
+                "id":                 msg_id,               # toast dedupe id, same convention as new_dm/friend events
+                "sender_id":          author.id,
+                "sender_username":    author.username,
+                "sender_avatar_url":  getattr(author, "avatar_url", None),
+                "content":            message_preview,
+                "group_id":           group.id,
+                "group_name":         group.name,
+                "created_at":         datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass  # best-effort — the Notification row above is the source of truth
 
 
 def _get_group_or_404(group_id: int, db: Session) -> Group:
@@ -771,9 +796,7 @@ async def send_group_message(
     db.commit()
     db.refresh(msg)
 
-    _process_mentions(text, group, current_user, db)
-
-    # Sending clears the sender's own typing indicator immediately, instead
+    await _process_mentions(text, group, current_user, msg_id=msg.id, db=db)
     # of waiting out TYPING_ACTIVE_SECONDS for it to expire on its own.
     typing_state = db.query(GroupTypingState).filter(
         GroupTypingState.group_id == group_id,
@@ -788,7 +811,7 @@ async def send_group_message(
 
 
 @router.patch("/groups/{group_id}/messages/{msg_id}", response_model=GroupMessageOut)
-def edit_group_message(
+async def edit_group_message(
     group_id: int,
     msg_id: int,
     payload: GroupMessageEdit,
@@ -813,7 +836,7 @@ def edit_group_message(
     db.commit()
 
     group = _get_group_or_404(group_id, db)
-    _process_mentions(text, group, current_user, db)
+    await _process_mentions(text, group, current_user, msg_id=msg.id, db=db)
 
     msg = db.query(GroupMessage).options(joinedload(GroupMessage.author)).filter(GroupMessage.id == msg_id).first()
     return _serialize_group_messages([msg], current_user, db)[0]
