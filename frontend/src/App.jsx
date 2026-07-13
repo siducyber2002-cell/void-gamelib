@@ -6,6 +6,7 @@ import { ThemeProvider } from './context/ThemeContext'
 import { LibraryProvider } from './context/LibraryContext'
 import { XPToastProvider } from './components/XPToast'
 import { ChatNotifyProvider } from './context/ChatNotifyContext'
+import { authTransitionGate } from './utils/authTransitionGate'
 
 import Layout from './components/layout/Layout'
 import LoginPage from './pages/LoginPage'
@@ -163,6 +164,12 @@ function ProtectedRoute({ children }) {
 function PublicRoute({ children }) {
   const { user, loading } = useAuth()
   if (loading) return null
+  // While LoginPage's portal-collapse transition is playing, `user` may
+  // already be truthy but we deliberately don't redirect here — LoginPage
+  // calls navigate('/') itself once the animation finishes. Without this,
+  // this route would swap LoginPage out instantly and the transition
+  // would never be seen.
+  if (user && authTransitionGate.active) return children
   return !user ? children : <Navigate to="/" replace />
 }
 

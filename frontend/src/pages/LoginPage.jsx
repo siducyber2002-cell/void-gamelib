@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import { Eye, EyeOff, ChevronRight, BookOpen } from 'lucide-react'
+import { authTransitionGate } from '../utils/authTransitionGate'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -15,6 +16,62 @@ export default function LoginPage() {
   const [glitchText, setGlitchText] = useState('Enter The Void')
   const [videoLoaded, setVideoLoaded] = useState(false)
   const YT_VIDEO_ID = 'f3st1DfrvIc';
+
+  // ── Portal-collapse login transition ──────────────────────────────
+  // 'idle' -> 'collapsing' (card shrinks toward the orb) -> 'flashing'
+  // (a circular wipe expands from the orb's real screen position and
+  // swallows the viewport) -> navigate. The orb's position is read live
+  // via getBoundingClientRect, so this works identically whether the
+  // logo sits beside the card (desktop) or stacked above it (mobile/
+  // Android) — no separate mobile animation needed.
+  const [phase, setPhase] = useState('idle') // idle | collapsing | flashing
+  const cardRef = useRef(null)
+  const orbRef = useRef(null)
+  const portalRef = useRef(null)
+  const collapseTimers = useRef([])
+
+  useEffect(() => {
+    return () => collapseTimers.current.forEach(clearTimeout)
+  }, [])
+
+  const runPortalCollapse = () => {
+    const card = cardRef.current
+    const orb = orbRef.current
+    const portal = portalRef.current
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    if (!card || !orb || !portal || reduceMotion) {
+      navigate('/')
+      authTransitionGate.active = false
+      return
+    }
+
+    const cardRect = card.getBoundingClientRect()
+    const orbRect = orb.getBoundingClientRect()
+    const orbCenterX = orbRect.left + orbRect.width / 2
+    const orbCenterY = orbRect.top + orbRect.height / 2
+
+    // Distance the card must travel so it visually gets "pulled into" the orb
+    card.style.setProperty('--collapse-tx', `${orbCenterX - (cardRect.left + cardRect.width / 2)}px`)
+    card.style.setProperty('--collapse-ty', `${orbCenterY - (cardRect.top + cardRect.height / 2)}px`)
+
+    // Radius needed for a circle centered on the orb to cover every corner
+    // of the current viewport, whatever the screen size/orientation.
+    const radius = Math.hypot(window.innerWidth, window.innerHeight)
+    portal.style.setProperty('--portal-x', `${orbCenterX}px`)
+    portal.style.setProperty('--portal-y', `${orbCenterY}px`)
+    portal.style.setProperty('--portal-radius', `${radius}px`)
+
+    setPhase('collapsing')
+    collapseTimers.current.push(setTimeout(() => setPhase('flashing'), 220))
+    collapseTimers.current.push(setTimeout(() => {
+      navigate('/')
+      // Release the gate right after we've navigated ourselves — from
+      // here on PublicRoute behaves normally again.
+      authTransitionGate.active = false
+    }, 720))
+  }
 
   const taglines = [
     'Enter The Void',
@@ -38,13 +95,17 @@ export default function LoginPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (loading || phase !== 'idle') return
     setLoading(true)
     try {
       await login(form.email, form.password)
-      navigate('/')
+      // Close the race window immediately: AuthContext's `user` is about
+      // to become truthy (if it isn't already), which would otherwise
+      // make PublicRoute redirect us away before the transition plays.
+      authTransitionGate.active = true
+      runPortalCollapse()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Invalid credentials')
-    } finally {
       setLoading(false)
     }
   }
@@ -704,6 +765,77 @@ export default function LoginPage() {
           50% { filter: drop-shadow(0 0 20px rgba(147,51,234,0.45)) drop-shadow(0 0 40px rgba(109,40,217,0.2)); }
         }
 
+        /* ── PORTAL COLLAPSE LOGIN TRANSITION ── */
+
+        /* Card gets pulled toward the orb's live screen position and
+           shrinks away. --collapse-tx/ty are set in JS from
+           getBoundingClientRect, so this is correct on any layout. */
+        .login-card--collapsing {
+          animation: portalCardCollapse 0.5s cubic-bezier(0.6,0,0.85,0.35) forwards;
+          pointer-events: none;
+          will-change: transform, opacity;
+        }
+        @keyframes portalCardCollapse {
+          0%   { transform: translate(0, 0) scale(1); opacity: 1; filter: blur(0px); }
+          55%  { opacity: 1; filter: blur(1px); }
+          100% {
+            transform: translate(var(--collapse-tx, 0px), var(--collapse-ty, 0px)) scale(0.04);
+            opacity: 0;
+            filter: blur(2px);
+          }
+        }
+
+        /* Orb "charges up" — rings spin faster and glow harder — while
+           the card is being pulled in, so the pull reads as coming FROM
+           the orb rather than just a random shrink. */
+        .wm-o-wrap--charging { animation: logoPulse 0.35s ease-in-out infinite !important; }
+        .wm-o-wrap--charging .orb-ring-1,
+        .wm-o-wrap--charging .orb-ring-2,
+        .wm-o-wrap--charging .orb-ring-3,
+        .wm-o-wrap--charging .orb-scanner {
+          animation-duration: 0.45s !important;
+        }
+
+        /* Rest of the scene dims slightly once the transition starts, so
+           the eye is drawn toward the orb/portal instead of the page. */
+        .void-root--transitioning .yt-overlay,
+        .void-root--transitioning .left-tagline,
+        .void-root--transitioning .explore-btn {
+          transition: filter 0.5s ease, opacity 0.5s ease;
+          filter: brightness(0.55) saturate(1.2);
+        }
+
+        /* Full-screen circular wipe expanding from the orb's exact
+           position. clip-path is GPU-friendly and well supported on
+           Android Chrome / iOS Safari, so this stays smooth on mobile. */
+        .portal-flash {
+          position: fixed;
+          inset: 0;
+          z-index: 60;
+          pointer-events: none;
+          opacity: 0;
+          background: radial-gradient(
+            circle at var(--portal-x, 50%) var(--portal-y, 50%),
+            #d8b4fe 0%,
+            #9333ea 16%,
+            #3b0d7a 42%,
+            #0a0414 72%,
+            #04030a 100%
+          );
+          clip-path: circle(0px at var(--portal-x, 50%) var(--portal-y, 50%));
+          transition: clip-path 0.5s cubic-bezier(0.45, 0, 0.2, 1), opacity 0.15s ease;
+        }
+        .portal-flash--active {
+          opacity: 1;
+          clip-path: circle(var(--portal-radius, 150%) at var(--portal-x, 50%) var(--portal-y, 50%));
+          will-change: clip-path;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .login-card--collapsing { animation: none; opacity: 0; transition: opacity 0.2s ease; }
+          .portal-flash { transition: none; }
+        }
+
         /* Responsive */
         @media (max-width: 900px) {
           .void-root { flex-direction: column; overflow-y: auto; overflow-x: hidden; }
@@ -769,7 +901,7 @@ export default function LoginPage() {
       `}</style>
 
       <div
-        className="void-root"
+        className={`void-root ${phase !== 'idle' ? 'void-root--transitioning' : ''}`}
         style={{ background: lm ? '#04030a' : '#04030a' }}
       >
         {/* ── YouTube Video Background ── */}
@@ -811,7 +943,10 @@ export default function LoginPage() {
               <span className="wm-v">V</span>
 
               {/* ── O ── glowing purple black hole portal with orbital rings */}
-              <span className="wm-o-wrap">
+              <span
+                className={`wm-o-wrap ${phase !== 'idle' ? 'wm-o-wrap--charging' : ''}`}
+                ref={orbRef}
+              >
                 {/* Animated orbital rings (CSS) */}
                 <span className="orb-ring orb-ring-1" />
                 <span className="orb-ring orb-ring-2" />
@@ -1029,7 +1164,10 @@ export default function LoginPage() {
 
         {/* ── Right Panel ── */}
         <div className="right-panel">
-          <div className="login-card">
+          <div
+            className={`login-card ${phase !== 'idle' ? 'login-card--collapsing' : ''}`}
+            ref={cardRef}
+          >
             <div className="card-title">Welcome Back</div>
             <div className="card-subtitle">// log in to continue your journey</div>
 
@@ -1141,6 +1279,14 @@ export default function LoginPage() {
             </div>
           </div>
         </div>
+
+        {/* Full-screen circular wipe, expands from the orb's real screen
+            position on success and swallows the viewport before we
+            navigate to the homepage. */}
+        <div
+          className={`portal-flash ${phase === 'flashing' ? 'portal-flash--active' : ''}`}
+          ref={portalRef}
+        />
       </div>
     </>
   )
