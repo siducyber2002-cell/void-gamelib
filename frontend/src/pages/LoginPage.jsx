@@ -1,10 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import toast from 'react-hot-toast'
 import { Eye, EyeOff, ChevronRight, BookOpen } from 'lucide-react'
-import { toJpeg } from 'html-to-image'
-import { bifrostBus } from '../components/BifrostTransition'
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -16,11 +14,7 @@ export default function LoginPage() {
   const [googleLoading, setGoogleLoading] = useState(false)
   const [glitchText, setGlitchText] = useState('Enter The Void')
   const [videoLoaded, setVideoLoaded] = useState(false)
-  const [capturing, setCapturing] = useState(false) // true for the one frame we snapshot for the freeze
   const YT_VIDEO_ID = 'f3st1DfrvIc';
-  const rootRef = useRef(null)    // whole page — this is what gets snapshotted and shattered
-  const loginBtnRef = useRef(null) // the crack starts here, right where you clicked
-  const logoORef = useRef(null)   // the VOID logo's "O" — where the void-ball drops in from
 
   const taglines = [
     'Enter The Void',
@@ -45,95 +39,10 @@ export default function LoginPage() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
-
-    // Where the crack will start from, if login succeeds — captured now
-    // while the button/root are still guaranteed to be in the DOM.
-    const btnRect = loginBtnRef.current?.getBoundingClientRect()
-    const rootRect = rootRef.current?.getBoundingClientRect()
-    const logoRect = logoORef.current?.getBoundingClientRect()
-    const impact = (btnRect && rootRect)
-      ? {
-          xPct: ((btnRect.left + btnRect.width / 2 - rootRect.left) / rootRect.width) * 100,
-          yPct: ((btnRect.top + btnRect.height / 2 - rootRect.top) / rootRect.height) * 100,
-        }
-      : { xPct: 50, yPct: 90 }
-
-    // Where the void-ball drops in from — the logo's "O", top-left.
-    const origin = (logoRect && rootRect)
-      ? {
-          xPct: ((logoRect.left + logoRect.width / 2 - rootRect.left) / rootRect.width) * 100,
-          yPct: ((logoRect.top + logoRect.height / 2 - rootRect.top) / rootRect.height) * 100,
-        }
-      : undefined
-
     try {
-      // html-to-image renders the DOM through an SVG <foreignObject>, and
-      // browsers refuse to paint cross-origin iframe content that way — so
-      // a raw capture of rootRef always came back with a black hole where
-      // the YouTube background sits. Swapping in a fixed thumbnail "fixed"
-      // that but introduced a worse bug: the thumbnail is a single static
-      // image YouTube generates once for the whole video, unrelated to
-      // playback position, so it always showed the same random frame no
-      // matter when you clicked. A flat gradient is the honest fix — no
-      // network fetch, no wrong-scene pop-in, always identical.
-      setCapturing(true)
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-
-      // This same image gets painted as a background-image on 8 separate
-      // overlay layers in BifrostTransition (the whole-page freeze plus all
-      // 7 falling shard pieces), so its size matters far more than a normal
-      // screenshot would: a full-resolution PNG here means the browser is
-      // decoding and re-rasterizing a multi-megabyte texture 8 times right
-      // as the shatter animation is trying to hit 60fps.
-      //   - toJpeg instead of toPng: this is an opaque photographic capture
-      //     of the whole page, not something needing lossless/alpha, so
-      //     JPEG's much smaller output decodes far faster with no visible
-      //     quality loss during a fast, motion-blurred shatter.
-      //   - canvasWidth cap: on large/hi-DPI desktop monitors the raw
-      //     capture can be huge; capping the long edge keeps the texture a
-      //     sane size without a visible drop in quality once it's on
-      //     screen mid-animation. Downscale only — never upscale.
-      const rawW = rootRect?.width || rootRef.current.clientWidth
-      const rawH = rootRect?.height || rootRef.current.clientHeight
-      const MAX_CAPTURE_W = 1600
-      const scale = Math.min(1, MAX_CAPTURE_W / rawW)
-
-      const image = await toJpeg(rootRef.current, {
-        cacheBust: true,
-        pixelRatio: 1,
-        quality: 0.85,
-        canvasWidth: Math.round(rawW * scale),
-        canvasHeight: Math.round(rawH * scale),
-      })
-
-      // Freeze BEFORE restoring the live video. The overlay is what the
-      // user looks at from here on, so the real page underneath needs to
-      // already be hidden behind it before we touch it again — otherwise
-      // there's a gap where the live iframe's own reload/fade-in can flash
-      // through right as the overlay takes over. Restoring capturing only
-      // after the overlay has had a couple of paints to settle closes that
-      // gap for good.
-      bifrostBus.freeze({
-        image,
-        width: rootRect?.width,
-        height: rootRect?.height,
-        left: rootRect?.left,
-        top: rootRect?.top,
-        origin,
-      })
-      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
-      setCapturing(false)
-
       await login(form.email, form.password)
-
-      // Only now, on confirmed success, does the void ball hit and the
-      // page crack apart to reveal the homepage underneath.
-      bifrostBus.shatter({ impact })
+      navigate('/')
     } catch (err) {
-      // Login failed — drop the frozen overlay instantly. Nothing behind
-      // it ever changed, so the login page is right there, unchanged.
-      setCapturing(false)
-      bifrostBus.cancel()
       toast.error(err.response?.data?.detail || 'Invalid credentials')
     } finally {
       setLoading(false)
@@ -861,23 +770,14 @@ export default function LoginPage() {
 
       <div
         className="void-root"
-        ref={rootRef}
         style={{ background: lm ? '#04030a' : '#04030a' }}
       >
         {/* ── YouTube Video Background ── */}
         <div className="yt-bg-wrap">
-  {/* Normal poster: gradient placeholder shown only before the video loads.
-      During `capturing` it's swapped to the SAME kind of gradient (not a
-      video frame — that's impossible to grab from a cross-origin iframe)
-      purely so html-to-image has something rasterizable to snapshot. It's
-      always identical, so it never reads as "the wrong scene". */}
+  {/* Gradient placeholder shown only before the video loads. */}
   <div
     className="yt-poster"
-    style={
-      capturing
-        ? { opacity: 1, backgroundImage: 'linear-gradient(135deg, #1a0a2e 0%, #0d0518 50%, #1a0a2e 100%)', transition: 'none' }
-        : { opacity: videoLoaded ? 0 : 1 }
-    }
+    style={{ opacity: videoLoaded ? 0 : 1 }}
   />
   <iframe
     src={`https://www.youtube.com/embed/${YT_VIDEO_ID}?autoplay=1&mute=1&loop=1&playlist=${YT_VIDEO_ID}&controls=0&showinfo=0&rel=0&iv_load_policy=3&modestbranding=1&disablekb=1&fs=0&cc_load_policy=0&playsinline=1&enablejsapi=1`}
@@ -885,7 +785,7 @@ export default function LoginPage() {
     allow="autoplay; encrypted-media"
     allowFullScreen={false}
     onLoad={() => setVideoLoaded(true)}
-    style={{ opacity: capturing ? 0 : (videoLoaded ? 1 : 0), transition: capturing ? 'none' : 'opacity 0.6s ease' }}
+    style={{ opacity: videoLoaded ? 1 : 0, transition: 'opacity 0.6s ease' }}
   />
 </div>
         {/* Medium cinematic overlay */}
@@ -911,7 +811,7 @@ export default function LoginPage() {
               <span className="wm-v">V</span>
 
               {/* ── O ── glowing purple black hole portal with orbital rings */}
-              <span className="wm-o-wrap" ref={logoORef}>
+              <span className="wm-o-wrap">
                 {/* Animated orbital rings (CSS) */}
                 <span className="orb-ring orb-ring-1" />
                 <span className="orb-ring orb-ring-2" />
@@ -1196,7 +1096,6 @@ export default function LoginPage() {
             {/* Submit */}
             <button
               className="login-btn"
-              ref={loginBtnRef}
               onClick={handleSubmit}
               disabled={loading}
             >
