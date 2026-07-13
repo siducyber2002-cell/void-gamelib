@@ -511,23 +511,29 @@ function NotificationBell({ dark }) {
             {feed.map((n, i) => (
               <div
                 key={n.id}
-                onClick={() => { setOpen(false); if (n.type === 'friend_accepted' || n.action === 'made_friend') navigate('/friends') }}
+                onClick={() => {
+                  setOpen(false)
+                  if (n.type === 'friend_accepted' || n.action === 'made_friend') navigate('/friends')
+                  else if (n.type === 'group_mention' && n.detail) navigate(`/community/${n.detail}`)
+                }}
                 style={{
                   padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
-                  cursor: (n.type === 'friend_accepted' || n.action === 'made_friend') ? 'pointer' : 'default',
+                  cursor: (n.type === 'friend_accepted' || n.action === 'made_friend' || (n.type === 'group_mention' && n.detail)) ? 'pointer' : 'default',
                   borderBottom: i < feed.length - 1 ? `1px solid ${border}` : 'none',
                 }}
               >
                 <div style={{
                   width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                  background: n.type === 'level_up' ? '#f59e0b18' : n.type === 'friend_accepted' ? '#10b98118' : '#a855f718',
+                  background: n.type === 'level_up' ? '#f59e0b18' : n.type === 'friend_accepted' ? '#10b98118' : n.type === 'group_mention' ? '#3b82f618' : '#a855f718',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
                 }}>
                   {n.type === 'level_up'
                     ? '🎉'
                     : n.type === 'friend_accepted'
                       ? '🤝'
-                      : (XP_LABELS[n.action]?.icon || '⚡')}
+                      : n.type === 'group_mention'
+                        ? '💬'
+                        : (XP_LABELS[n.action]?.icon || '⚡')}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>

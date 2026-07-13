@@ -6,13 +6,15 @@ import {
   ArrowLeft, Send, Users, Circle, ShieldCheck, ShieldAlert, UserPlus,
   Check, CheckCheck, X, Loader2, Clock, LogOut, Search, Bell, Paperclip, Smile,
   Camera, Trash2, ImagePlus, Mic, FileText, Download, MoreVertical, Eraser,
-  ChevronDown,
+  ChevronDown, Pin, PinOff, Pencil, CornerUpLeft,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import PageTour from '../components/onboarding/PageTour'
 import { groupDetailTourSteps } from '../components/onboarding/tourSteps'
 
 const POLL_MS = 4000
+const TYPING_POLL_MS = 3000
+const TYPING_PING_MS = 2500 // throttle: don't ping the typing endpoint more often than this
 const AVATAR_COLORS = ['#a855f7', '#f43f5e', '#10b981', '#f59e0b', '#3b82f6', '#ec4899']
 const avatarColor = (name = '') => AVATAR_COLORS[(name.charCodeAt(0) || 0) % AVATAR_COLORS.length]
 
@@ -21,6 +23,8 @@ const EMOJI_LIST = [
   '👍','👎','👏','🙌','🙏','💪','🔥','✨','⭐','💯','✅','❌','❤️','💜','💙','🖤',
   '🎮','🕹️','🏆','🎯','⚔️','🛡️','💣','🚀','🎉','🎊','☠️','👑','🐉','🦾','🎧','📸',
 ]
+
+const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🔥']
 
 function formatBytes(bytes) {
   if (!bytes) return '0 B'
@@ -36,6 +40,19 @@ function formatMsgTime(iso) {
   const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const sameDay = d.toDateString() === new Date().toDateString()
   return sameDay ? time : `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${time}`
+}
+
+// Splits message text on @mentions and highlights them — purely visual,
+// doesn't validate the mention actually resolved to a real member (the
+// backend already did that work when deciding who gets notified).
+function renderMessageContent(content) {
+  if (!content) return null
+  const parts = content.split(/(@\w+)/g)
+  return parts.map((part, i) =>
+    part.startsWith('@') && part.length > 1
+      ? <span key={i} className="text-violet-600 dark:text-violet-400 font-semibold">{part}</span>
+      : <span key={i}>{part}</span>
+  )
 }
 
 function AvatarStack({ members = [], size = 26 }) {
@@ -99,17 +116,42 @@ export default function GroupDetailPage() {
   const [promoting, setPromoting] = useState({})
   const [confirmPromote, setConfirmPromote] = useState(null)
   const [newMessagesPending, setNewMessagesPending] = useState(false)
+
+  // ── Reply / edit / react / pin / mentions / typing / search ──────────
+  const [replyingTo, setReplyingTo] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [editText, setEditText] = useState('')
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [reactingTo, setReactingTo] = useState(null)
+  const [pinnedMessages, setPinnedMessages] = useState([])
+  const [showPinnedRail, setShowPinnedRail] = useState(true)
+  const [pinningId, setPinningId] = useState(null)
+  const [typingUsers, setTypingUsers] = useState([])
+  const [mentionOpen, setMentionOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [searching, setSearching] = useState(false)
+  const [highlightMsgId, setHighlightMsgId] = useState(null)
+
   const coverInputRef = useRef(null)
   const mediaInputRef = useRef(null)
   const attachInputRef = useRef(null)
   const mediaRecorderRef = useRef(null)
   const audioChunksRef = useRef([])
   const recordTimerRef = useRef(null)
+  const textareaRef = useRef(null)
+  const messageRefs = useRef({})       // msg id -> DOM node, for jump-to-message
+  const typingPingRef = useRef(0)      // last time we pinged the typing endpoint
+  const searchTimerRef = useRef(null)
+  const highlightTimerRef = useRef(null)
 
   const bottomRef = useRef(null)
   const autoFollowRef = useRef(true)
   const lastMessageIdRef = useRef(null)
   const pollRef = useRef(null)
+  const typingPollRef = useRef(null)
 
   const loadAll = useCallback(async () => {
     try {
@@ -120,12 +162,14 @@ export default function GroupDetailPage() {
       setGroup(g.data)
       setMembers(m.data)
       if (g.data.is_member) {
-        const [msgs, med] = await Promise.all([
+        const [msgs, med, pinned] = await Promise.all([
           axios.get(`/api/community/groups/${groupId}/messages`),
           axios.get(`/api/community/groups/${groupId}/media`),
+          axios.get(`/api/community/groups/${groupId}/messages/pinned`).catch(() => ({ data: [] })),
         ])
         setMessages(msgs.data)
         setMedia(med.data)
+        setPinnedMessages(pinned.data)
       }
       const selfRole = m.data.find(x => x.is_self)?.role
       if (g.data.is_owner || selfRole === 'admin') {
@@ -162,6 +206,21 @@ export default function GroupDetailPage() {
       } catch { /* silent */ }
     }, POLL_MS)
     return () => clearInterval(pollRef.current)
+  }, [group?.is_member, groupId])
+
+  // ── Typing indicator poll — separate, faster interval than the message
+  // poll since "is typing" needs to feel closer to live. ──────────────
+  useEffect(() => {
+    if (!group?.is_member) return
+    const tick = async () => {
+      try {
+        const res = await axios.get(`/api/community/groups/${groupId}/typing`)
+        setTypingUsers(res.data)
+      } catch { /* silent */ }
+    }
+    tick()
+    typingPollRef.current = setInterval(tick, TYPING_POLL_MS)
+    return () => clearInterval(typingPollRef.current)
   }, [group?.is_member, groupId])
 
   // Detect the user's *intent* to scroll (wheel/touch) rather than trying to
@@ -218,6 +277,8 @@ export default function GroupDetailPage() {
     return () => {
       if (pendingPreviewUrl) URL.revokeObjectURL(pendingPreviewUrl)
       clearInterval(recordTimerRef.current)
+      clearTimeout(searchTimerRef.current)
+      clearTimeout(highlightTimerRef.current)
     }
   }, [pendingPreviewUrl])
 
@@ -257,6 +318,62 @@ export default function GroupDetailPage() {
     }
   }
 
+  // ── typing indicator ping/clear ─────────────────────────────────────
+  const pingTyping = () => {
+    const now = Date.now()
+    if (now - typingPingRef.current < TYPING_PING_MS) return
+    typingPingRef.current = now
+    axios.post(`/api/community/groups/${groupId}/typing`).catch(() => {})
+  }
+  const clearTyping = () => {
+    typingPingRef.current = 0
+    axios.delete(`/api/community/groups/${groupId}/typing`).catch(() => {})
+  }
+
+  // ── @mention autocomplete ────────────────────────────────────────────
+  const mentionCandidates = useMemo(() => {
+    if (!mentionOpen) return []
+    const q = mentionQuery.toLowerCase()
+    return members.filter(m => !m.is_self && m.username.toLowerCase().startsWith(q)).slice(0, 6)
+  }, [mentionOpen, mentionQuery, members])
+
+  const insertMention = (username) => {
+    const el = textareaRef.current
+    if (!el) {
+      setInput(prev => `${prev}@${username} `)
+      setMentionOpen(false)
+      return
+    }
+    const cursor = el.selectionStart
+    const before = input.slice(0, cursor)
+    const after = input.slice(cursor)
+    const newBefore = before.replace(/@(\w*)$/, `@${username} `)
+    const newVal = newBefore + after
+    setInput(newVal)
+    setMentionOpen(false)
+    requestAnimationFrame(() => {
+      el.focus()
+      const pos = newBefore.length
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
+  const handleInputChange = (e) => {
+    const val = e.target.value
+    setInput(val)
+    pingTyping()
+
+    const cursor = e.target.selectionStart
+    const uptoCursor = val.slice(0, cursor)
+    const match = uptoCursor.match(/(?:^|\s)@(\w*)$/)
+    if (match) {
+      setMentionQuery(match[1])
+      setMentionOpen(true)
+    } else {
+      setMentionOpen(false)
+    }
+  }
+
   const sendMsg = async () => {
     const text = input.trim()
     if (!text && !pendingFile) return
@@ -265,13 +382,17 @@ export default function GroupDetailPage() {
       const fd = new FormData()
       fd.append('content', text)
       if (pendingFile) fd.append('file', pendingFile)
+      if (replyingTo) fd.append('reply_to_id', replyingTo.id)
       const res = await axios.post(`/api/community/groups/${groupId}/messages`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
       setMessages(prev => [...prev, res.data])
       autoFollowRef.current = true
       setInput('')
+      setReplyingTo(null)
+      setMentionOpen(false)
       clearPendingFile()
+      clearTyping()
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Message failed to send')
     } finally {
@@ -279,6 +400,10 @@ export default function GroupDetailPage() {
     }
   }
   const handleKeyDown = (e) => {
+    if (mentionOpen && (e.key === 'Escape')) {
+      setMentionOpen(false)
+      return
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       sendMsg()
@@ -307,7 +432,7 @@ export default function GroupDetailPage() {
     setPendingPreviewUrl(null)
   }
 
-  // ── emoji picker ─────────────────────────────────────────────
+  // ── emoji picker (for composing) ─────────────────────────────
   const insertEmoji = (emoji) => setInput(prev => prev + emoji)
 
   // ── voice note recording (browser MediaRecorder) ────────────
@@ -402,6 +527,7 @@ export default function GroupDetailPage() {
     try {
       await axios.delete(`/api/community/groups/${groupId}/messages`)
       setMessages([])
+      setPinnedMessages([])
       toast.success('Chat cleared')
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Could not clear chat')
@@ -544,6 +670,135 @@ export default function GroupDetailPage() {
     }
   }
 
+  // ── reactions ─────────────────────────────────────────────────────
+  const toggleReaction = async (msg, emoji) => {
+    setReactingTo(null)
+    try {
+      const res = await axios.post(`/api/community/groups/${groupId}/messages/${msg.id}/reactions`, { emoji })
+      setMessages(prev => prev.map(m => (m.id === msg.id ? res.data : m)))
+    } catch {
+      toast.error('Could not react')
+    }
+  }
+
+  // ── edit ──────────────────────────────────────────────────────────
+  const startEdit = (msg) => {
+    setEditingId(msg.id)
+    setEditText(msg.content)
+    setReactingTo(null)
+  }
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditText('')
+  }
+  const saveEdit = async (msg) => {
+    const text = editText.trim()
+    if (!text) {
+      toast.error("Message can't be empty")
+      return
+    }
+    setSavingEdit(true)
+    try {
+      const res = await axios.patch(`/api/community/groups/${groupId}/messages/${msg.id}`, { content: text })
+      setMessages(prev => prev.map(m => (m.id === msg.id ? res.data : m)))
+      cancelEdit()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not edit message')
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  // ── delete own message ───────────────────────────────────────────
+  const deleteOwnMessage = async (msg) => {
+    try {
+      await axios.delete(`/api/community/groups/${groupId}/messages/${msg.id}`)
+      setMessages(prev => prev.filter(m => m.id !== msg.id))
+      setPinnedMessages(prev => prev.filter(m => m.id !== msg.id))
+      toast.success('Message deleted')
+    } catch {
+      toast.error('Could not delete message')
+    }
+  }
+
+  // ── reply ─────────────────────────────────────────────────────────
+  const startReply = (msg) => {
+    setReplyingTo(msg)
+    setReactingTo(null)
+    textareaRef.current?.focus()
+  }
+  const cancelReply = () => setReplyingTo(null)
+
+  // ── pin / unpin (owner or admin) ─────────────────────────────────
+  const pinMessage = async (msg) => {
+    setPinningId(msg.id)
+    try {
+      const res = await axios.post(`/api/community/groups/${groupId}/messages/${msg.id}/pin`)
+      setMessages(prev => prev.map(m => (m.id === msg.id ? res.data : m)))
+      setPinnedMessages(prev => [res.data, ...prev.filter(p => p.id !== msg.id)])
+      setShowPinnedRail(true)
+      toast.success('Message pinned')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not pin message')
+    } finally {
+      setPinningId(null)
+    }
+  }
+  const unpinMessage = async (msg) => {
+    setPinningId(msg.id)
+    try {
+      const res = await axios.delete(`/api/community/groups/${groupId}/messages/${msg.id}/pin`)
+      setMessages(prev => prev.map(m => (m.id === msg.id ? res.data : m)))
+      setPinnedMessages(prev => prev.filter(p => p.id !== msg.id))
+    } catch {
+      toast.error('Could not unpin message')
+    } finally {
+      setPinningId(null)
+    }
+  }
+
+  // ── jump to a message (from reply preview, pinned rail, or search) ──
+  const jumpToMessage = (id) => {
+    setSearchOpen(false)
+    const node = messageRefs.current[id]
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      clearTimeout(highlightTimerRef.current)
+      setHighlightMsgId(id)
+      highlightTimerRef.current = setTimeout(() => setHighlightMsgId(h => (h === id ? null : h)), 1800)
+    } else {
+      toast('That message is further up the thread — keep scrolling to find it')
+    }
+  }
+
+  // ── search ────────────────────────────────────────────────────────
+  const runSearch = async (q) => {
+    if (!q.trim()) {
+      setSearchResults([])
+      return
+    }
+    setSearching(true)
+    try {
+      const res = await axios.get(`/api/community/groups/${groupId}/messages/search`, { params: { q } })
+      setSearchResults(res.data)
+    } catch {
+      toast.error('Search failed')
+    } finally {
+      setSearching(false)
+    }
+  }
+  const handleSearchChange = (e) => {
+    const q = e.target.value
+    setSearchQuery(q)
+    clearTimeout(searchTimerRef.current)
+    searchTimerRef.current = setTimeout(() => runSearch(q), 350)
+  }
+  const closeSearch = () => {
+    setSearchOpen(false)
+    setSearchQuery('')
+    setSearchResults([])
+  }
+
   if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-slate-400 dark:text-slate-500">Loading group…</div>
   if (!group) return null
 
@@ -611,6 +866,15 @@ export default function GroupDetailPage() {
                     <UserPlus size={14} /> Invite
                   </button>
                 )}
+                {group.is_member && (
+                  <button
+                    onClick={() => setSearchOpen(s => !s)}
+                    title="Search messages"
+                    className="w-9 h-9 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-white flex items-center justify-center hover:bg-black/60"
+                  >
+                    <Search size={15} />
+                  </button>
+                )}
                 {group.is_member ? (
                   <div className="relative">
                     <button
@@ -622,7 +886,15 @@ export default function GroupDetailPage() {
                     {showOptions && (
                       <>
                         <div className="fixed inset-0 z-20" onClick={() => setShowOptions(false)} />
-                        <div className="absolute right-0 top-full mt-2 w-44 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-30">
+                        <div className="absolute right-0 top-full mt-2 w-48 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-30">
+                          {pinnedMessages.length > 0 && (
+                            <button
+                              onClick={() => { setShowOptions(false); setShowPinnedRail(true) }}
+                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 text-left"
+                            >
+                              <Pin size={14} /> Pinned Messages ({pinnedMessages.length})
+                            </button>
+                          )}
                           {canManage && (
                             <button
                               onClick={() => { setShowOptions(false); setShowClearConfirm(true) }}
@@ -652,13 +924,77 @@ export default function GroupDetailPage() {
             </div>
           </div>
 
+          {/* pinned rail */}
+          {group.is_member && pinnedMessages.length > 0 && showPinnedRail && (
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-amber-500/5 overflow-x-auto">
+              <Pin size={13} className="text-amber-500 flex-shrink-0" />
+              <div className="flex gap-2 flex-1 min-w-0">
+                {pinnedMessages.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => jumpToMessage(p.id)}
+                    className="flex-shrink-0 max-w-[200px] text-left px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition"
+                  >
+                    <span className="block text-[10px] font-bold text-amber-600 dark:text-amber-400">{p.author.username}</span>
+                    <span className="block text-xs text-slate-600 dark:text-slate-300 truncate">{p.content || 'Attachment'}</span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setShowPinnedRail(false)} title="Hide pinned" className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white flex-shrink-0">
+                <X size={13} />
+              </button>
+            </div>
+          )}
+
           {/* messages */}
           <div className="relative flex-1 min-h-[320px]">
+
+          {/* search overlay */}
+          {searchOpen && (
+            <div className="absolute inset-x-0 top-0 z-30 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 p-3 flex flex-col gap-2 max-h-[80%] shadow-xl">
+              <div className="flex items-center gap-2">
+                <Search size={15} className="text-slate-400 dark:text-slate-500 flex-shrink-0" />
+                <input
+                  autoFocus
+                  value={searchQuery}
+                  onChange={handleSearchChange}
+                  placeholder="Search messages…"
+                  className="flex-1 bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none"
+                />
+                {searching && <Loader2 size={14} className="animate-spin text-slate-400 dark:text-slate-500 flex-shrink-0" />}
+                <button onClick={closeSearch} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white flex-shrink-0"><X size={16} /></button>
+              </div>
+              <div className="overflow-y-auto flex flex-col gap-1">
+                {searchQuery.trim() && !searching && searchResults.length === 0 && (
+                  <p className="text-xs text-slate-400 dark:text-slate-500 text-center py-4">No messages found</p>
+                )}
+                {searchResults.map(r => (
+                  <button
+                    key={r.id}
+                    onClick={() => jumpToMessage(r.id)}
+                    className="text-left px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-900 flex items-start gap-2"
+                  >
+                    <div className="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0 overflow-hidden mt-0.5">
+                      {r.author.avatar_url ? <img src={r.author.avatar_url} className="w-full h-full object-cover" alt="" /> : r.author.username[0]?.toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-violet-600 dark:text-violet-400">{r.author.username}</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 flex-shrink-0">{formatMsgTime(r.created_at)}</span>
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{r.content || (r.attachment_type ? `📎 ${r.attachment_type}` : '')}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div
             onWheel={stopAutoFollow}
             onTouchMove={stopAutoFollow}
             onScroll={handleContainerScroll}
-            className="absolute inset-0 overflow-y-auto p-5 flex flex-col gap-4"
+            className="absolute inset-0 overflow-y-auto p-5 flex flex-col gap-5"
           >
             {!group.is_member ? (
               <div className="m-auto text-center max-w-xs">
@@ -676,13 +1012,77 @@ export default function GroupDetailPage() {
               <div className="m-auto text-center text-slate-400 dark:text-slate-500">No messages yet — say hi 👋</div>
             ) : messages.map(msg => {
               const self = msg.author_id === user?.id
+              const isEditing = editingId === msg.id
+              const isHighlighted = highlightMsgId === msg.id
               return (
-                <div key={msg.id} className={`flex gap-3 ${self ? 'flex-row-reverse' : ''}`}>
+                <div
+                  key={msg.id}
+                  ref={el => { messageRefs.current[msg.id] = el }}
+                  className={`group/msg relative flex gap-3 rounded-2xl transition ${self ? 'flex-row-reverse' : ''} ${isHighlighted ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-950' : ''}`}
+                >
                   <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 overflow-hidden">
                     {msg.author.avatar_url ? <img src={msg.author.avatar_url} className="w-full h-full object-cover" alt="" /> : msg.author.username[0]?.toUpperCase()}
                   </div>
+
+                  {/* hover action bar */}
+                  {!isEditing && (
+                    <div className={`absolute -top-3 ${self ? 'right-2' : 'left-11'} opacity-0 group-hover/msg:opacity-100 transition flex items-center gap-0.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-full px-1 py-0.5 shadow-lg z-10`}>
+                      <button onClick={() => setReactingTo(r => (r === msg.id ? null : msg.id))} title="React" className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-violet-500">
+                        <Smile size={13} />
+                      </button>
+                      <button onClick={() => startReply(msg)} title="Reply" className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-violet-500">
+                        <CornerUpLeft size={13} />
+                      </button>
+                      {canManage && (
+                        msg.pinned ? (
+                          <button onClick={() => unpinMessage(msg)} disabled={pinningId === msg.id} title="Unpin" className="w-6 h-6 rounded-full flex items-center justify-center text-amber-500 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50">
+                            <PinOff size={13} />
+                          </button>
+                        ) : (
+                          <button onClick={() => pinMessage(msg)} disabled={pinningId === msg.id} title="Pin" className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-amber-500 disabled:opacity-50">
+                            <Pin size={13} />
+                          </button>
+                        )
+                      )}
+                      {self && msg.content && (
+                        <button onClick={() => startEdit(msg)} title="Edit" className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-violet-500">
+                          <Pencil size={12} />
+                        </button>
+                      )}
+                      {self && (
+                        <button onClick={() => deleteOwnMessage(msg)} title="Delete" className="w-6 h-6 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-rose-500">
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* quick-reaction popup */}
+                  {reactingTo === msg.id && (
+                    <div className={`absolute -top-11 ${self ? 'right-2' : 'left-11'} flex gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-1.5 shadow-xl z-20`}>
+                      {QUICK_REACTIONS.map(e => (
+                        <button key={e} onClick={() => toggleReaction(msg, e)} className="text-lg hover:scale-125 transition p-0.5">{e}</button>
+                      ))}
+                    </div>
+                  )}
+
                   <div className={`max-w-xs lg:max-w-md flex flex-col gap-1 ${self ? 'items-end' : 'items-start'}`}>
                     {!self && <span className="text-xs font-bold text-violet-600 dark:text-violet-400">{msg.author.username}</span>}
+
+                    {msg.reply_to && (
+                      <button
+                        onClick={() => jumpToMessage(msg.reply_to.id)}
+                        className="flex items-start gap-1.5 max-w-[240px] px-2.5 py-1.5 rounded-xl border-l-2 border-violet-500 bg-slate-100 dark:bg-slate-800/70 text-left hover:bg-slate-200 dark:hover:bg-slate-800 transition"
+                      >
+                        <CornerUpLeft size={11} className="text-violet-500 flex-shrink-0 mt-0.5" />
+                        <span className="min-w-0">
+                          <span className="block text-[10px] font-bold text-violet-600 dark:text-violet-400">{msg.reply_to.author_username}</span>
+                          <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                            {msg.reply_to.content || (msg.reply_to.attachment_type ? `📎 ${msg.reply_to.attachment_type}` : '')}
+                          </span>
+                        </span>
+                      </button>
+                    )}
 
                     {msg.attachment_type === 'image' && (
                       <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block rounded-2xl overflow-hidden max-w-[240px] border border-slate-300 dark:border-slate-700">
@@ -713,14 +1113,54 @@ export default function GroupDetailPage() {
                       </a>
                     )}
 
-                    {msg.content && (
+                    {isEditing ? (
+                      <div className="flex flex-col gap-1.5 w-full">
+                        <textarea
+                          autoFocus
+                          value={editText}
+                          onChange={e => setEditText(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(msg) }
+                            if (e.key === 'Escape') cancelEdit()
+                          }}
+                          rows={2}
+                          className="px-3 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none border border-violet-500 resize-none min-w-[200px]"
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <button onClick={cancelEdit} className="text-xs font-semibold text-slate-400 dark:text-slate-500 px-2 py-1 hover:text-slate-700 dark:hover:text-slate-300">Cancel</button>
+                          <button onClick={() => saveEdit(msg)} disabled={savingEdit} className="flex items-center gap-1 text-xs font-bold text-white bg-violet-600 rounded-lg px-3 py-1 disabled:opacity-50">
+                            {savingEdit ? <Loader2 size={11} className="animate-spin" /> : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : msg.content && (
                       <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${self ? 'bg-violet-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100'}`}>
-                        {msg.content}
+                        {renderMessageContent(msg.content)}
+                      </div>
+                    )}
+
+                    {msg.reactions?.length > 0 && (
+                      <div className={`flex flex-wrap gap-1 ${self ? 'justify-end' : 'justify-start'}`}>
+                        {msg.reactions.map(r => (
+                          <button
+                            key={r.emoji}
+                            onClick={() => toggleReaction(msg, r.emoji)}
+                            className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border transition ${
+                              r.reacted
+                                ? 'bg-violet-600/15 border-violet-500 text-violet-600 dark:text-violet-300'
+                                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400'
+                            }`}
+                          >
+                            <span>{r.emoji}</span><span>{r.count}</span>
+                          </button>
+                        ))}
                       </div>
                     )}
 
                     <span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
+                      {msg.pinned && <Pin size={10} className="text-amber-400" />}
                       {formatMsgTime(msg.created_at)}
+                      {msg.edited_at && <span className="italic">(edited)</span>}
                       {self && (
                         msg.seen_by?.length > 0
                           ? <CheckCheck size={13} className="text-sky-400" />
@@ -744,6 +1184,22 @@ export default function GroupDetailPage() {
           )}
           </div>
 
+          {/* typing indicator */}
+          {group.is_member && typingUsers.length > 0 && (
+            <div className="px-5 pt-2 text-xs text-slate-400 dark:text-slate-500 italic flex items-center gap-1.5">
+              <span className="flex gap-0.5">
+                <span className="w-1 h-1 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1 h-1 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '120ms' }} />
+                <span className="w-1 h-1 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '240ms' }} />
+              </span>
+              {typingUsers.length === 1
+                ? `${typingUsers[0].username} is typing…`
+                : typingUsers.length === 2
+                  ? `${typingUsers[0].username} and ${typingUsers[1].username} are typing…`
+                  : `${typingUsers.length} people are typing…`}
+            </div>
+          )}
+
           {/* input */}
           {group.is_member && (
             <div className="px-3 sm:px-5 py-3 sm:py-4 border-t border-slate-200 dark:border-slate-800 relative">
@@ -765,6 +1221,34 @@ export default function GroupDetailPage() {
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {mentionOpen && mentionCandidates.length > 0 && (
+                <div className="absolute bottom-full left-2 sm:left-5 mb-2 w-56 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-20">
+                  {mentionCandidates.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => insertMention(m.username)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800 text-left"
+                    >
+                      <div className="w-6 h-6 rounded-full bg-violet-600 flex items-center justify-center text-white text-[10px] font-bold overflow-hidden flex-shrink-0">
+                        {m.avatar_url ? <img src={m.avatar_url} className="w-full h-full object-cover" alt="" /> : m.username[0]?.toUpperCase()}
+                      </div>
+                      @{m.username}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {replyingTo && (
+                <div className="flex items-center gap-2 mb-2 bg-slate-100 dark:bg-slate-900 border-l-2 border-violet-500 rounded-lg px-3 py-2">
+                  <CornerUpLeft size={14} className="text-violet-500 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-violet-600 dark:text-violet-400">Replying to {replyingTo.author.username}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{replyingTo.content || (replyingTo.attachment_type ? `📎 ${replyingTo.attachment_type}` : '')}</p>
+                  </div>
+                  <button onClick={cancelReply} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white flex-shrink-0"><X size={14} /></button>
                 </div>
               )}
 
@@ -804,9 +1288,11 @@ export default function GroupDetailPage() {
                 <input ref={attachInputRef} type="file" onChange={handleAttachChange} className="hidden" />
                 <button onClick={handleAttachPick} disabled={recording} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 flex-shrink-0 p-1 disabled:opacity-40"><Paperclip size={16} /></button>
                 <textarea
+                  ref={textareaRef}
                   value={input}
-                  onChange={e => setInput(e.target.value)}
+                  onChange={handleInputChange}
                   onKeyDown={handleKeyDown}
+                  onBlur={() => { setMentionOpen(false); clearTyping() }}
                   disabled={recording}
                   placeholder={recording ? 'Recording voice note…' : `Message ${group.name}...`}
                   rows={1}
