@@ -21,7 +21,7 @@ import GroupDetailPage from './pages/GroupDetailPage'
 import DashboardPage from './pages/DashboardPage'
 import ProfilePage from './pages/ProfilePage'
 import SettingsPage from './pages/SettingsPage'
-import AchievementsPage from './pages/AchievementsPage'
+import LeaderboardPage from './pages/LeaderboardPage'
 import FriendsPage from './pages/FriendsPage'
 import AboutPage from './pages/AboutPage'
 
@@ -218,7 +218,7 @@ export default function App() {
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/profile" element={<ProfilePage />} />
                     <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="/achievements" element={<AchievementsPage />} />
+                    <Route path="/leaderboard" element={<LeaderboardPage />} />
                     <Route path="/friends" element={<FriendsPage />} />
                     <Route path="/about" element={<AboutPage />} />
                   </Route>

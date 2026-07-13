@@ -578,7 +578,7 @@ const NAV_SECTIONS = [
     label: 'Your Stuff',
     items: [
       { to: '/profile',      icon: User,     label: 'Profile'      },
-      { to: '/achievements', icon: Trophy,   label: 'Achievements' },
+      { to: '/leaderboard',   icon: Trophy,   label: 'Leaderboard'  },
       { to: '/friends',      icon: Users,    label: 'Friends'      },
       { to: '/settings',     icon: Settings, label: 'Settings'     },
       { to: '/about',        icon: Info,     label: 'About Us'     },
