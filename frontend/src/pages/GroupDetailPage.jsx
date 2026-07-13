@@ -46,7 +46,7 @@ function AvatarStack({ members = [], size = 26 }) {
       {shown.map((m, i) => (
         <div
           key={m.id}
-          className="rounded-full border-2 border-slate-950 flex items-center justify-center text-white font-bold overflow-hidden"
+          className="rounded-full border-2 border-white dark:border-slate-950 flex items-center justify-center text-white font-bold overflow-hidden"
           style={{ width: size, height: size, marginLeft: -8, zIndex: shown.length - i, background: avatarColor(m.username), fontSize: size * 0.4 }}
           title={m.username}
         >
@@ -54,7 +54,7 @@ function AvatarStack({ members = [], size = 26 }) {
         </div>
       ))}
       {extra > 0 && (
-        <div className="rounded-full border-2 border-slate-950 bg-slate-800 flex items-center justify-center text-slate-300 font-bold" style={{ width: size, height: size, marginLeft: -8, fontSize: size * 0.32 }}>
+        <div className="rounded-full border-2 border-white dark:border-slate-950 bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold" style={{ width: size, height: size, marginLeft: -8, fontSize: size * 0.32 }}>
           +{extra}
         </div>
       )}
@@ -375,6 +375,28 @@ export default function GroupDetailPage() {
   const isAdmin = useMemo(() => members.find(m => m.is_self)?.role === 'admin', [members])
   const canManage = group?.is_owner || isAdmin
 
+  // Media Feed shows two different sources: images uploaded through the
+  // panel's own button (`media` state, deletable) and images shared as chat
+  // attachments (deletable in the message thread, not from here — there's no
+  // backend route for that). Previously the panel only ever read `media`,
+  // so anything shared via chat never showed up here even though it had
+  // clearly been posted, which read as "No media shared yet" being wrong.
+  // This merges both for *display* only; upload flow and delete permissions
+  // are untouched.
+  const combinedMedia = useMemo(() => {
+    const chatImages = messages
+      .filter(m => m.attachment_type === 'image')
+      .map(m => ({ key: `msg-${m.id}`, image_url: m.attachment_url, created_at: m.created_at, canDelete: false, raw: null }))
+    const uploads = media.map(m => ({
+      key: `media-${m.id}`,
+      image_url: m.image_url,
+      created_at: m.created_at,
+      canDelete: canManage || m.uploaded_by?.id === user?.id,
+      raw: m,
+    }))
+    return [...uploads, ...chatImages].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+  }, [messages, media, canManage, user])
+
   const clearChat = async () => {
     setClearing(true)
     try {
@@ -522,7 +544,7 @@ export default function GroupDetailPage() {
     }
   }
 
-  if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-slate-500">Loading group…</div>
+  if (loading) return <div className="min-h-[60vh] flex items-center justify-center text-slate-400 dark:text-slate-500">Loading group…</div>
   if (!group) return null
 
   return (
@@ -539,7 +561,7 @@ export default function GroupDetailPage() {
       />
 
       <div className="flex flex-col lg:flex-row gap-4">
-        <div className="flex-1 min-w-0 flex flex-col bg-slate-950 rounded-3xl border border-slate-800 overflow-hidden">
+        <div className="flex-1 min-w-0 flex flex-col bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden">
 
           {/* banner header */}
           <div className="relative h-32 sm:h-40 flex-shrink-0">
@@ -600,16 +622,16 @@ export default function GroupDetailPage() {
                     {showOptions && (
                       <>
                         <div className="fixed inset-0 z-20" onClick={() => setShowOptions(false)} />
-                        <div className="absolute right-0 top-full mt-2 w-44 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-30">
+                        <div className="absolute right-0 top-full mt-2 w-44 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-30">
                           {canManage && (
                             <button
                               onClick={() => { setShowOptions(false); setShowClearConfirm(true) }}
-                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-300 hover:bg-slate-800 text-left"
+                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 text-left"
                             >
                               <Eraser size={14} /> Clear Chat
                             </button>
                           )}
-                          <button onClick={handleLeave} className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-rose-400 hover:bg-slate-800 text-left">
+                          <button onClick={handleLeave} className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-rose-400 hover:bg-slate-200 dark:hover:bg-slate-800 text-left">
                             <LogOut size={14} /> Leave Group
                           </button>
                         </div>
@@ -617,7 +639,7 @@ export default function GroupDetailPage() {
                     )}
                   </div>
                 ) : group.has_pending_request ? (
-                  <button onClick={handleCancelRequest} disabled={joining} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-slate-300 text-xs sm:text-sm font-bold disabled:opacity-50">
+                  <button onClick={handleCancelRequest} disabled={joining} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-bold disabled:opacity-50">
                     <Clock size={14} /> <span>Cancel</span><span className="hidden sm:inline">&nbsp;Request</span>
                   </button>
                 ) : (
@@ -640,18 +662,18 @@ export default function GroupDetailPage() {
           >
             {!group.is_member ? (
               <div className="m-auto text-center max-w-xs">
-                <ShieldCheck size={36} className="mx-auto mb-3 text-slate-600" />
-                <p className="font-semibold text-white">
+                <ShieldCheck size={36} className="mx-auto mb-3 text-slate-500 dark:text-slate-600" />
+                <p className="font-semibold text-slate-900 dark:text-white">
                   {group.has_pending_request ? 'Your request is pending' : `Join ${group.name} to chat`}
                 </p>
-                <p className="text-slate-500 text-sm mt-1">
+                <p className="text-slate-400 dark:text-slate-500 text-sm mt-1">
                   {group.has_pending_request
                     ? 'The group owner needs to approve your request before you can see messages.'
                     : "Send a request above — once the owner approves, you'll see the chat here."}
                 </p>
               </div>
             ) : messages.length === 0 ? (
-              <div className="m-auto text-center text-slate-500">No messages yet — say hi 👋</div>
+              <div className="m-auto text-center text-slate-400 dark:text-slate-500">No messages yet — say hi 👋</div>
             ) : messages.map(msg => {
               const self = msg.author_id === user?.id
               return (
@@ -660,16 +682,16 @@ export default function GroupDetailPage() {
                     {msg.author.avatar_url ? <img src={msg.author.avatar_url} className="w-full h-full object-cover" alt="" /> : msg.author.username[0]?.toUpperCase()}
                   </div>
                   <div className={`max-w-xs lg:max-w-md flex flex-col gap-1 ${self ? 'items-end' : 'items-start'}`}>
-                    {!self && <span className="text-xs font-bold text-violet-400">{msg.author.username}</span>}
+                    {!self && <span className="text-xs font-bold text-violet-600 dark:text-violet-400">{msg.author.username}</span>}
 
                     {msg.attachment_type === 'image' && (
-                      <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block rounded-2xl overflow-hidden max-w-[240px] border border-slate-700">
+                      <a href={msg.attachment_url} target="_blank" rel="noopener noreferrer" className="block rounded-2xl overflow-hidden max-w-[240px] border border-slate-300 dark:border-slate-700">
                         <img src={msg.attachment_url} alt={msg.attachment_name} className="w-full max-h-64 object-cover" />
                       </a>
                     )}
 
                     {msg.attachment_type === 'voice' && (
-                      <div className={`rounded-2xl px-3 py-2 ${self ? 'bg-violet-600' : 'bg-slate-800'}`}>
+                      <div className={`rounded-2xl px-3 py-2 ${self ? 'bg-violet-600' : 'bg-slate-200 dark:bg-slate-800'}`}>
                         <audio controls src={msg.attachment_url} className="h-9" style={{ maxWidth: 220 }} />
                       </div>
                     )}
@@ -680,29 +702,29 @@ export default function GroupDetailPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         download={msg.attachment_name}
-                        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-2xl border ${self ? 'bg-violet-600 border-violet-500' : 'bg-slate-800 border-slate-700'} hover:opacity-90 transition`}
+                        className={`flex items-center gap-2.5 px-3 py-2.5 rounded-2xl border ${self ? 'bg-violet-600 border-violet-500' : 'bg-slate-200 dark:bg-slate-800 border-slate-300 dark:border-slate-700'} hover:opacity-90 transition`}
                       >
-                        <FileText size={18} className="text-white flex-shrink-0" />
+                        <FileText size={18} className={`flex-shrink-0 ${self ? 'text-white' : 'text-slate-800 dark:text-white'}`} />
                         <div className="min-w-0">
-                          <p className="text-xs font-semibold text-white truncate max-w-[160px]">{msg.attachment_name}</p>
-                          <p className="text-[10px] text-white/70">{formatBytes(msg.attachment_size)}</p>
+                          <p className={`text-xs font-semibold truncate max-w-[160px] ${self ? 'text-white' : 'text-slate-800 dark:text-white'}`}>{msg.attachment_name}</p>
+                          <p className={`text-[10px] ${self ? 'text-white/70' : 'text-slate-800/70 dark:text-white/70'}`}>{formatBytes(msg.attachment_size)}</p>
                         </div>
-                        <Download size={14} className="text-white/80 flex-shrink-0 ml-1" />
+                        <Download size={14} className={`flex-shrink-0 ml-1 ${self ? 'text-white/80' : 'text-slate-800/80 dark:text-white/80'}`} />
                       </a>
                     )}
 
                     {msg.content && (
-                      <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${self ? 'bg-violet-600 text-white' : 'bg-slate-800 text-slate-100'}`}>
+                      <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${self ? 'bg-violet-600 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100'}`}>
                         {msg.content}
                       </div>
                     )}
 
-                    <span className="flex items-center gap-1 text-xs text-slate-500">
+                    <span className="flex items-center gap-1 text-xs text-slate-400 dark:text-slate-500">
                       {formatMsgTime(msg.created_at)}
                       {self && (
                         msg.seen_by?.length > 0
                           ? <CheckCheck size={13} className="text-sky-400" />
-                          : <Check size={13} className="text-slate-500" />
+                          : <Check size={13} className="text-slate-400 dark:text-slate-500" />
                       )}
                     </span>
                   </div>
@@ -724,20 +746,20 @@ export default function GroupDetailPage() {
 
           {/* input */}
           {group.is_member && (
-            <div className="px-3 sm:px-5 py-3 sm:py-4 border-t border-slate-800 relative">
+            <div className="px-3 sm:px-5 py-3 sm:py-4 border-t border-slate-200 dark:border-slate-800 relative">
 
               {showEmoji && (
-                <div className="absolute bottom-full right-2 sm:right-5 mb-2 w-64 max-w-[85vw] bg-slate-900 border border-slate-800 rounded-2xl p-3 shadow-2xl z-20">
+                <div className="absolute bottom-full right-2 sm:right-5 mb-2 w-64 max-w-[85vw] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 shadow-2xl z-20">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wide">Emoji</span>
-                    <button onClick={() => setShowEmoji(false)} className="text-slate-500 hover:text-white"><X size={14} /></button>
+                    <span className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Emoji</span>
+                    <button onClick={() => setShowEmoji(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white"><X size={14} /></button>
                   </div>
                   <div className="grid grid-cols-8 gap-1 max-h-40 overflow-y-auto">
                     {EMOJI_LIST.map(e => (
                       <button
                         key={e}
                         onClick={() => insertEmoji(e)}
-                        className="text-lg hover:bg-slate-800 rounded-lg p-1 transition"
+                        className="text-lg hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg p-1 transition"
                       >
                         {e}
                       </button>
@@ -747,17 +769,17 @@ export default function GroupDetailPage() {
               )}
 
               {pendingFile && (
-                <div className="flex items-center gap-2 mb-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 w-fit max-w-full">
+                <div className="flex items-center gap-2 mb-2 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 w-fit max-w-full">
                   {pendingPreviewUrl ? (
                     <img src={pendingPreviewUrl} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
                   ) : (
-                    <FileText size={18} className="text-violet-400 flex-shrink-0" />
+                    <FileText size={18} className="text-violet-600 dark:text-violet-400 flex-shrink-0" />
                   )}
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-white truncate max-w-[180px]">{pendingFile.name}</p>
-                    <p className="text-[10px] text-slate-500">{formatBytes(pendingFile.size)}</p>
+                    <p className="text-xs font-semibold text-slate-900 dark:text-white truncate max-w-[180px]">{pendingFile.name}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500">{formatBytes(pendingFile.size)}</p>
                   </div>
-                  <button onClick={clearPendingFile} className="text-slate-500 hover:text-white flex-shrink-0 ml-1"><X size={14} /></button>
+                  <button onClick={clearPendingFile} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white flex-shrink-0 ml-1"><X size={14} /></button>
                 </div>
               )}
 
@@ -778,9 +800,9 @@ export default function GroupDetailPage() {
                 </button>
               )}
 
-              <div className="flex gap-1 sm:gap-2 items-center bg-slate-900 border border-slate-800 rounded-2xl px-2 sm:px-3 py-2" data-tour="group-chat-input">
+              <div className="flex gap-1 sm:gap-2 items-center bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl px-2 sm:px-3 py-2" data-tour="group-chat-input">
                 <input ref={attachInputRef} type="file" onChange={handleAttachChange} className="hidden" />
-                <button onClick={handleAttachPick} disabled={recording} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1 disabled:opacity-40"><Paperclip size={16} /></button>
+                <button onClick={handleAttachPick} disabled={recording} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 flex-shrink-0 p-1 disabled:opacity-40"><Paperclip size={16} /></button>
                 <textarea
                   value={input}
                   onChange={e => setInput(e.target.value)}
@@ -788,10 +810,10 @@ export default function GroupDetailPage() {
                   disabled={recording}
                   placeholder={recording ? 'Recording voice note…' : `Message ${group.name}...`}
                   rows={1}
-                  className="flex-1 min-w-0 bg-transparent text-white placeholder-slate-500 text-sm resize-none outline-none py-1 disabled:opacity-40"
+                  className="flex-1 min-w-0 bg-transparent text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm resize-none outline-none py-1 disabled:opacity-40"
                 />
-                <button onClick={() => setShowEmoji(s => !s)} disabled={recording} className="text-slate-500 hover:text-slate-300 flex-shrink-0 p-1 disabled:opacity-40"><Smile size={16} /></button>
-                <button onClick={startRecording} disabled={recording} className={`flex-shrink-0 p-1 ${recording ? 'text-rose-400' : 'text-slate-500 hover:text-slate-300'}`}><Mic size={16} /></button>
+                <button onClick={() => setShowEmoji(s => !s)} disabled={recording} className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 flex-shrink-0 p-1 disabled:opacity-40"><Smile size={16} /></button>
+                <button onClick={startRecording} disabled={recording} className={`flex-shrink-0 p-1 ${recording ? 'text-rose-400' : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'}`}><Mic size={16} /></button>
                 <button
                   onClick={sendMsg}
                   disabled={recording || (!input.trim() && !pendingFile) || sending}
@@ -808,8 +830,8 @@ export default function GroupDetailPage() {
         <div className="w-full lg:w-72 flex-shrink-0 flex flex-col gap-4">
 
           {canManage && requests.length > 0 && (
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1">
+            <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
+              <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1">
                 <Bell size={12} /> Join Requests ({requests.length})
               </h4>
               <div className="flex flex-col gap-2">
@@ -818,15 +840,15 @@ export default function GroupDetailPage() {
                     <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0 overflow-hidden">
                       {req.user.avatar_url ? <img src={req.user.avatar_url} className="w-full h-full object-cover" alt="" /> : req.user.username[0]?.toUpperCase()}
                     </div>
-                    <span className="text-sm text-slate-300 truncate flex-1">{req.user.username}</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-300 truncate flex-1">{req.user.username}</span>
                     {reqActing[req.id] ? (
-                      <Loader2 size={14} className="animate-spin text-slate-500" />
+                      <Loader2 size={14} className="animate-spin text-slate-400 dark:text-slate-500" />
                     ) : (
                       <div className="flex gap-1.5">
                         <button onClick={() => acceptRequest(req)} className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/25">
                           <Check size={14} />
                         </button>
-                        <button onClick={() => rejectRequest(req)} className="w-7 h-7 rounded-lg bg-slate-800 text-slate-400 flex items-center justify-center hover:bg-slate-700">
+                        <button onClick={() => rejectRequest(req)} className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center hover:bg-slate-300 dark:hover:bg-slate-700">
                           <X size={14} />
                         </button>
                       </div>
@@ -837,9 +859,9 @@ export default function GroupDetailPage() {
             </div>
           )}
 
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4" data-tour="group-members-panel">
+          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4" data-tour="group-members-panel">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Users size={12} /> Members</h4>
+              <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1"><Users size={12} /> Members</h4>
               <AvatarStack members={members} size={22} />
             </div>
             <div className="flex flex-col gap-2 max-h-52 overflow-y-auto">
@@ -852,9 +874,9 @@ export default function GroupDetailPage() {
                       <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold text-sm overflow-hidden">
                         {m.avatar_url ? <img src={m.avatar_url} className="w-full h-full object-cover" alt="" /> : m.username[0]?.toUpperCase()}
                       </div>
-                      <Circle size={8} className={`absolute -bottom-0.5 -right-0.5 fill-current ${m.online ? 'text-emerald-400' : 'text-slate-600'}`} />
+                      <Circle size={8} className={`absolute -bottom-0.5 -right-0.5 fill-current ${m.online ? 'text-emerald-400' : 'text-slate-500 dark:text-slate-600'}`} />
                     </div>
-                    <span className="text-sm text-slate-300 truncate flex-1">{m.username}</span>
+                    <span className="text-sm text-slate-600 dark:text-slate-300 truncate flex-1">{m.username}</span>
                     {m.role === 'owner' && <ShieldCheck size={12} className="text-amber-400 flex-shrink-0" title="Owner" />}
                     {m.role === 'admin' && <ShieldAlert size={12} className="text-sky-400 flex-shrink-0" title="Admin" />}
                     {canManage && !m.is_self && m.role !== 'owner' && m.role !== 'admin' && (
@@ -872,7 +894,7 @@ export default function GroupDetailPage() {
                         onClick={() => !sent && sendFriendRequest(m)}
                         disabled={sending || sent}
                         title={sent ? 'Request sent' : 'Add friend'}
-                        className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${sent ? 'bg-slate-800 text-slate-500' : 'bg-violet-600/15 text-violet-400 hover:bg-violet-600/25'} disabled:cursor-not-allowed`}
+                        className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 ${sent ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-500' : 'bg-violet-600/15 text-violet-600 dark:text-violet-400 hover:bg-violet-600/25'} disabled:cursor-not-allowed`}
                       >
                         {sending ? <Loader2 size={11} className="animate-spin" /> : sent ? <Check size={11} /> : <UserPlus size={11} />}
                       </button>
@@ -883,11 +905,11 @@ export default function GroupDetailPage() {
             </div>
           </div>
 
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4" data-tour="group-media-panel">
+          <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4" data-tour="group-media-panel">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Media Feed</h4>
+              <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Media Feed</h4>
               <div className="flex items-center gap-3">
-                {media.length > 0 && <span className="text-xs text-violet-400 font-semibold cursor-pointer hover:text-violet-300">View All</span>}
+                {media.length > 0 && <span className="text-xs text-violet-600 dark:text-violet-400 font-semibold cursor-pointer hover:text-violet-500 dark:hover:text-violet-300">View All</span>}
                 {group.is_member && (
                   <>
                     <input ref={mediaInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleMediaChange} className="hidden" />
@@ -895,7 +917,7 @@ export default function GroupDetailPage() {
                       onClick={handleMediaPick}
                       disabled={mediaUploading}
                       title="Upload image"
-                      className="w-6 h-6 rounded-md bg-violet-600/15 text-violet-400 flex items-center justify-center hover:bg-violet-600/25 disabled:opacity-50"
+                      className="w-6 h-6 rounded-md bg-violet-600/15 text-violet-600 dark:text-violet-400 flex items-center justify-center hover:bg-violet-600/25 disabled:opacity-50"
                     >
                       {mediaUploading ? <Loader2 size={12} className="animate-spin" /> : <ImagePlus size={12} />}
                     </button>
@@ -903,19 +925,18 @@ export default function GroupDetailPage() {
                 )}
               </div>
             </div>
-            {media.length === 0 ? (
-              <p className="text-xs text-slate-600">No media shared yet.</p>
+            {combinedMedia.length === 0 ? (
+              <p className="text-xs text-slate-500 dark:text-slate-600">No media shared yet.</p>
             ) : (
               <div className="grid grid-cols-3 gap-2">
-                {media.slice(0, 6).map(m => {
-                  const canDelete = canManage || m.uploaded_by?.id === user?.id
-                  const deleting = mediaDeleting[m.id]
+                {combinedMedia.slice(0, 6).map(m => {
+                  const deleting = m.raw ? mediaDeleting[m.raw.id] : false
                   return (
-                    <div key={m.id} className="relative group/media aspect-square rounded-lg overflow-hidden bg-slate-800">
+                    <div key={m.key} className="relative group/media aspect-square rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-800">
                       <img src={m.image_url} className="w-full h-full object-cover" alt="" />
-                      {canDelete && (
+                      {m.canDelete && m.raw && (
                         <button
-                          onClick={() => deleteMedia(m)}
+                          onClick={() => deleteMedia(m.raw)}
                           disabled={deleting}
                           className="absolute top-1 right-1 w-5 h-5 rounded-md bg-black/60 text-white flex items-center justify-center opacity-0 group-hover/media:opacity-100 transition disabled:opacity-60"
                         >
@@ -930,9 +951,9 @@ export default function GroupDetailPage() {
           </div>
 
           {group.directives.length > 0 && (
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Directive</h4>
-              <ol className="list-decimal list-inside flex flex-col gap-1.5 text-xs text-slate-400">
+            <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
+              <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">Directive</h4>
+              <ol className="list-decimal list-inside flex flex-col gap-1.5 text-xs text-slate-500 dark:text-slate-400">
                 {group.directives.map((d, i) => <li key={i}>{d}</li>)}
               </ol>
             </div>
@@ -942,13 +963,13 @@ export default function GroupDetailPage() {
 
       {showClearConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowClearConfirm(false)}>
-          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
-            <h2 className="font-display font-bold text-white text-lg">Clear all messages?</h2>
-            <p className="text-sm text-slate-400">
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+            <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg">Clear all messages?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               This permanently deletes every message in {group.name} for all members, to help free up space. This can't be undone.
             </p>
             <div className="flex gap-2 justify-end mt-1">
-              <button onClick={() => setShowClearConfirm(false)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-800">
+              <button onClick={() => setShowClearConfirm(false)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
                 Cancel
               </button>
               <button
@@ -965,13 +986,13 @@ export default function GroupDetailPage() {
 
       {confirmPromote && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setConfirmPromote(null)}>
-          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
-            <h2 className="font-display font-bold text-white text-lg">Make {confirmPromote.username} an admin?</h2>
-            <p className="text-sm text-slate-400">
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+            <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg">Make {confirmPromote.username} an admin?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               They'll get the same management powers as you in {group.name} — inviting members, approving join requests, changing the cover, and clearing chat.
             </p>
             <div className="flex gap-2 justify-end mt-1">
-              <button onClick={() => setConfirmPromote(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-300 hover:bg-slate-800">
+              <button onClick={() => setConfirmPromote(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
                 Cancel
               </button>
               <button
@@ -988,36 +1009,36 @@ export default function GroupDetailPage() {
 
       {addOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setAddOpen(false)}>
-          <div onClick={e => e.stopPropagation()} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-3 max-h-[78vh]">
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-3 max-h-[78vh]">
             <div className="flex items-center justify-between">
-              <h2 className="font-display font-bold text-white text-lg">Invite Friends</h2>
-              <button onClick={() => setAddOpen(false)} className="text-slate-500 hover:text-white"><X size={18} /></button>
+              <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg">Invite Friends</h2>
+              <button onClick={() => setAddOpen(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white"><X size={18} /></button>
             </div>
             <div className="relative">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
               <input
                 autoFocus
                 value={addSearch}
                 onChange={e => setAddSearch(e.target.value)}
                 placeholder="Search your friends..."
-                className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700 focus:border-violet-500"
+                className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none border border-slate-300 dark:border-slate-700 focus:border-violet-500"
               />
             </div>
             <div className="flex flex-col gap-2 overflow-y-auto min-h-[140px]">
               {friendsLoading ? (
                 <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-violet-400" /></div>
               ) : addableFriends.length === 0 ? (
-                <p className="text-center py-7 text-slate-500 text-sm">
+                <p className="text-center py-7 text-slate-400 dark:text-slate-500 text-sm">
                   {friends.length === 0 ? "You don't have any friends yet — add some first!" : 'Everyone from your friends list is already here.'}
                 </p>
               ) : addableFriends.map(f => {
                 const sending = addSending[f.id]
                 return (
-                  <div key={f.id} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-slate-800">
+                  <div key={f.id} className="flex items-center gap-3 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800">
                     <div className="w-9 h-9 rounded-lg bg-violet-600 flex items-center justify-center text-white font-bold text-sm overflow-hidden flex-shrink-0">
                       {f.avatar_url ? <img src={f.avatar_url} className="w-full h-full object-cover" alt="" /> : f.username[0]?.toUpperCase()}
                     </div>
-                    <span className="flex-1 min-w-0 text-sm font-semibold text-white truncate">{f.username}</span>
+                    <span className="flex-1 min-w-0 text-sm font-semibold text-slate-900 dark:text-white truncate">{f.username}</span>
                     <button
                       onClick={() => addMember(f)}
                       disabled={sending}

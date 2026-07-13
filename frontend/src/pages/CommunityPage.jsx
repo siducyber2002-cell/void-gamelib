@@ -25,7 +25,7 @@ function AvatarStack({ members = [], size = 28 }) {
       {shown.map((m, i) => (
         <div
           key={m.id}
-          className="rounded-full border-2 border-slate-900 flex items-center justify-center text-white font-bold overflow-hidden"
+          className="rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center text-white font-bold overflow-hidden"
           style={{
             width: size, height: size, marginLeft: -8, zIndex: shown.length - i,
             background: avatarColor(m.username), fontSize: size * 0.4,
@@ -37,7 +37,7 @@ function AvatarStack({ members = [], size = 28 }) {
       ))}
       {extra > 0 && (
         <div
-          className="rounded-full border-2 border-slate-900 bg-slate-800 flex items-center justify-center text-slate-300 font-bold"
+          className="rounded-full border-2 border-white dark:border-slate-900 bg-slate-200 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold"
           style={{ width: size, height: size, marginLeft: -8, fontSize: size * 0.32 }}
         >
           +{extra}
@@ -142,19 +142,19 @@ export default function CommunityPage() {
 
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-7">
         <div>
-          <h1 className="font-semibold text-2xl text-violet-400">Find Your Squad</h1>
-          <p className="text-slate-400 text-sm mt-1.5 max-w-lg">
+          <h1 className="font-semibold text-2xl text-violet-600 dark:text-violet-400">Find Your Squad</h1>
+          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1.5 max-w-lg">
             Connect with millions of gamers across the globe. Join specialized groups, participate in tournaments, and dominate the leaderboard.
           </p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3 flex-shrink-0 w-full md:w-auto">
           <div className="relative flex-1 sm:flex-none" data-tour="community-search">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search groups or games..."
-              className="pl-9 pr-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white placeholder-slate-500 outline-none focus:border-violet-500 w-full sm:w-56"
+              className="pl-9 pr-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-violet-500 w-full sm:w-56"
             />
           </div>
           <button
@@ -168,11 +168,11 @@ export default function CommunityPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 text-slate-500 text-sm">
+        <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 text-sm">
           <Loader2 size={16} className="animate-spin" /> Loading groups…
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-16 text-slate-500">No groups found. Be the first to create one.</div>
+        <div className="text-center py-16 text-slate-400 dark:text-slate-500">No groups found. Be the first to create one.</div>
       ) : (
         <div className="flex flex-col gap-4" data-tour="groups-list">
           {filtered.map(g => {
@@ -181,9 +181,9 @@ export default function CommunityPage() {
               <div
                 key={g.id}
                 onClick={() => navigate(`/community/${g.id}`)}
-                className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-slate-900/60 border border-slate-800 rounded-2xl p-3 text-left hover:border-violet-600/60 transition group cursor-pointer"
+                className="flex flex-col sm:flex-row gap-3 sm:gap-4 bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 text-left hover:border-violet-600/60 transition group cursor-pointer"
               >
-                <div className="relative w-full h-36 sm:w-44 sm:h-28 flex-shrink-0 rounded-xl overflow-hidden bg-slate-800">
+                <div className="relative w-full h-36 sm:w-44 sm:h-28 flex-shrink-0 rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800">
                   {g.banner_url && <img src={g.banner_url} alt={g.name} className="w-full h-full object-cover" />}
                   {g.tier && (
                     <span className={`absolute top-2 left-2 text-[9px] font-bold px-2 py-0.5 rounded-md tracking-wide ${tierClass(g.tier)}`}>
@@ -194,14 +194,14 @@ export default function CommunityPage() {
 
                 <div className="flex-1 min-w-0 py-0.5 flex flex-col">
                   <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <h3 className="font-display font-bold text-lg text-violet-400 group-hover:text-violet-300 truncate">{g.name}</h3>
+                    <h3 className="font-display font-bold text-lg text-violet-600 dark:text-violet-400 group-hover:text-violet-500 dark:group-hover:text-violet-300 truncate">{g.name}</h3>
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {g.highlight_tag && <span className="text-xs text-amber-400 font-semibold whitespace-nowrap">{g.highlight_tag}</span>}
                       <AvatarStack members={previewMembers} size={26} />
                     </div>
                   </div>
-                  <p className="text-sm text-slate-400 mt-1 line-clamp-2 max-w-2xl">{g.description}</p>
-                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 max-w-2xl">{g.description}</p>
+                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-400 dark:text-slate-500">
                     <span className="flex items-center gap-1"><Users size={12} /> {g.member_count.toLocaleString()} Members</span>
                     <span className="flex items-center gap-1"><Circle size={7} className="text-emerald-400 fill-current" /> {g.activity_status}</span>
                     {g.is_owner && <span className="flex items-center gap-1 text-amber-400 font-semibold"><ShieldCheck size={12} /> Owner</span>}
@@ -211,16 +211,16 @@ export default function CommunityPage() {
                   </div>
                   <div className="mt-auto pt-2">
                     {g.is_member ? (
-                      <span className="text-violet-400 text-xs font-semibold">Joined — click to open →</span>
+                      <span className="text-violet-600 dark:text-violet-400 text-xs font-semibold">Joined — click to open →</span>
                     ) : g.has_pending_request ? (
-                      <button disabled className="flex items-center gap-1.5 text-xs font-bold text-slate-500 px-3 py-1.5 rounded-lg border border-slate-700 cursor-not-allowed">
+                      <button disabled className="flex items-center gap-1.5 text-xs font-bold text-slate-400 dark:text-slate-500 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 cursor-not-allowed">
                         <Clock size={12} /> Request Pending
                       </button>
                     ) : (
                       <button
                         onClick={(e) => requestJoin(e, g)}
                         disabled={joining[g.id]}
-                        className="flex items-center gap-1.5 text-xs font-bold text-violet-400 px-3 py-1.5 rounded-lg border border-violet-600/60 hover:bg-violet-600/10 transition disabled:opacity-50"
+                        className="flex items-center gap-1.5 text-xs font-bold text-violet-600 dark:text-violet-400 px-3 py-1.5 rounded-lg border border-violet-600/60 hover:bg-violet-600/10 transition disabled:opacity-50"
                       >
                         {joining[g.id] ? <Loader2 size={12} className="animate-spin" /> : null}
                         {joining[g.id] ? 'Sending…' : 'Request to Join'}
@@ -236,24 +236,24 @@ export default function CommunityPage() {
 
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowCreate(false)}>
-          <form onClick={e => e.stopPropagation()} onSubmit={handleCreate} className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-3 max-h-[90vh] overflow-y-auto">
+          <form onClick={e => e.stopPropagation()} onSubmit={handleCreate} className="w-full max-w-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 flex flex-col gap-3 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="font-display font-bold text-white text-lg">Create a Group</h2>
-              <button type="button" onClick={() => setShowCreate(false)} className="text-slate-500 hover:text-white"><X size={18} /></button>
+              <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg">Create a Group</h2>
+              <button type="button" onClick={() => setShowCreate(false)} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white"><X size={18} /></button>
             </div>
-            <input required placeholder="Group name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700 focus:border-violet-500" />
-            <textarea placeholder="Description" rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700 focus:border-violet-500 resize-none" />
-            <p className="text-xs text-slate-500 -mt-1">You can upload cover art once the group is created.</p>
+            <input required placeholder="Group name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none border border-slate-300 dark:border-slate-700 focus:border-violet-500" />
+            <textarea placeholder="Description" rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none border border-slate-300 dark:border-slate-700 focus:border-violet-500 resize-none" />
+            <p className="text-xs text-slate-400 dark:text-slate-500 -mt-1">You can upload cover art once the group is created.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <select value={form.tier} onChange={e => setForm(f => ({ ...f, tier: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700">
+              <select value={form.tier} onChange={e => setForm(f => ({ ...f, tier: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none border border-slate-300 dark:border-slate-700">
                 <option>Casual</option>
                 <option>Elite Tier</option>
                 <option>Hardcore</option>
                 <option>Tech</option>
               </select>
-              <input placeholder="Highlight tag (optional)" value={form.highlight_tag} onChange={e => setForm(f => ({ ...f, highlight_tag: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700 focus:border-violet-500" />
+              <input placeholder="Highlight tag (optional)" value={form.highlight_tag} onChange={e => setForm(f => ({ ...f, highlight_tag: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none border border-slate-300 dark:border-slate-700 focus:border-violet-500" />
             </div>
-            <textarea placeholder="Directives / rules — one per line" rows={3} value={form.directives} onChange={e => setForm(f => ({ ...f, directives: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-800 text-white text-sm outline-none border border-slate-700 focus:border-violet-500 resize-none" />
+            <textarea placeholder="Directives / rules — one per line" rows={3} value={form.directives} onChange={e => setForm(f => ({ ...f, directives: e.target.value }))} className="px-3 py-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-white text-sm outline-none border border-slate-300 dark:border-slate-700 focus:border-violet-500 resize-none" />
             <button disabled={creating} type="submit" className="mt-1 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white font-bold text-sm disabled:opacity-50">
               {creating ? 'Creating…' : 'Create Group'}
             </button>
