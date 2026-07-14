@@ -320,7 +320,58 @@ async def _process_mentions(text: str, group: Group, author: User, msg_id: int, 
             pass  # best-effort — the Notification row above is the source of truth
 
 
-def _get_group_or_404(group_id: int, db: Session) -> Group:
+async def _notify_group_event(
+    db: Session,
+    recipient_id: int,
+    type_: str,
+    message: str,
+    group: Group,
+    *,
+    event_id: int,
+    actor: Optional[User] = None,
+    content: str = "",
+):
+    """Writes a Notification row (source of truth — covers offline users
+    and the bell dropdown, same as _process_mentions above) AND pushes the
+    same event live over the global /ws/notify socket dm.py already uses
+    for new_dm (best-effort — no-ops if the recipient has no open socket).
+    Every group-related notification other than @mentions goes through
+    here, so the DB row and the live toast can't drift out of sync.
+
+    `actor` is whoever performed the action (the replier, the admin who
+    added/removed someone, the person requesting to join) and becomes the
+    toast's avatar/name. For events with no natural single actor — the
+    "welcome to the group" message, or being removed — pass None and the
+    group itself is shown instead (name + cover image).
+    """
+    db.add(Notification(
+        user_id=recipient_id,
+        type=type_,
+        message=message,
+        action=type_,
+        detail=str(group.id),
+    ))
+    db.commit()
+
+    if actor:
+        sender_id, sender_username, sender_avatar_url = actor.id, actor.username, getattr(actor, "avatar_url", None)
+    else:
+        sender_id, sender_username, sender_avatar_url = group.id, group.name, group.banner_url
+
+    try:
+        await push_to_user(recipient_id, {
+            "type":              type_,
+            "id":                event_id,
+            "sender_id":         sender_id,
+            "sender_username":   sender_username,
+            "sender_avatar_url": sender_avatar_url,
+            "content":           content,
+            "group_id":          group.id,
+            "group_name":        group.name,
+            "created_at":        datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass  # best-effort — the Notification row above is the source of truth
     group = (
         db.query(Group)
         .options(joinedload(Group.memberships).joinedload(GroupMembership.user))
@@ -447,7 +498,7 @@ def get_group(
 
 # ── Join requests (self-serve: user asks, owner approves) ───────────────
 @router.post("/groups/{group_id}/join", response_model=GroupOut)
-def request_to_join(
+async def request_to_join(
     group_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -465,8 +516,21 @@ def request_to_join(
     if existing:
         raise HTTPException(400, "You already have a pending request for this group")
 
-    db.add(GroupJoinRequest(group_id=group_id, user_id=current_user.id))
+    req = GroupJoinRequest(group_id=group_id, user_id=current_user.id)
+    db.add(req)
     db.commit()
+    db.refresh(req)
+
+    # Notify the owner AND every admin — any of them can act on it, so
+    # everyone who has the power to accept/reject should know it exists.
+    recipients = {group.owner_id} | {m.user_id for m in group.memberships if m.role == GroupRole.admin}
+    for uid in recipients:
+        await _notify_group_event(
+            db, uid, "group_join_request",
+            f"{current_user.username} wants to join {group.name}",
+            group, event_id=req.id, actor=current_user,
+        )
+
     group = _get_group_or_404(group_id, db)
     return _serialize_group(group, current_user, db)
 
@@ -509,7 +573,7 @@ def list_join_requests(
 
 
 @router.post("/groups/{group_id}/requests/{request_id}/accept", response_model=GroupJoinRequestOut)
-def accept_join_request(
+async def accept_join_request(
     group_id: int,
     request_id: int,
     db: Session = Depends(get_db),
@@ -532,11 +596,18 @@ def accept_join_request(
         db.add(GroupMembership(group_id=group_id, user_id=req.user_id, role=GroupRole.member))
     db.commit()
     db.refresh(req)
+
+    await _notify_group_event(
+        db, req.user_id, "group_join_accepted",
+        f"Welcome to {group.name}! 🎉",
+        group, event_id=req.id, actor=None,
+    )
+
     return req
 
 
 @router.post("/groups/{group_id}/requests/{request_id}/reject", response_model=GroupJoinRequestOut)
-def reject_join_request(
+async def reject_join_request(
     group_id: int,
     request_id: int,
     db: Session = Depends(get_db),
@@ -557,12 +628,19 @@ def reject_join_request(
     req.status = GroupRequestStatus.rejected
     db.commit()
     db.refresh(req)
+
+    await _notify_group_event(
+        db, req.user_id, "group_join_rejected",
+        f"Your request to join {group.name} was declined",
+        group, event_id=req.id, actor=None,
+    )
+
     return req
 
 
 # ── Owner or admin directly adding a friend (skips the request queue) ───
 @router.post("/groups/{group_id}/members/{user_id}", response_model=GroupOut)
-def add_member_directly(
+async def add_member_directly(
     group_id: int,
     user_id: int,
     db: Session = Depends(get_db),
@@ -589,8 +667,55 @@ def add_member_directly(
     if pending:
         pending.status = GroupRequestStatus.accepted
     db.commit()
+
+    await _notify_group_event(
+        db, user_id, "group_member_added",
+        f"{current_user.username} added you to {group.name}",
+        group, event_id=group.id, actor=current_user,
+    )
+
     group = _get_group_or_404(group_id, db)
     return _serialize_group(group, current_user, db)
+
+
+@router.delete("/groups/{group_id}/members/{user_id}", status_code=204)
+async def remove_member(
+    group_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Owner/admin removing someone from the group — distinct from
+    leave_group below, which is self-service only. Didn't exist at all
+    before this; added specifically so "member removed" has something to
+    actually trigger the notification."""
+    group = _get_group_or_404(group_id, db)
+    membership = _require_member(group, current_user)
+    _require_owner_or_admin(group, membership, current_user)
+
+    if user_id == group.owner_id:
+        raise HTTPException(400, "Can't remove the group owner")
+
+    target = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.user_id == user_id,
+    ).first()
+    if not target:
+        raise HTTPException(404, "That user isn't a member of this group")
+
+    # Same tier as promote_member below: an admin can't remove another
+    # admin, only the owner can.
+    if target.role == GroupRole.admin and current_user.id != group.owner_id:
+        raise HTTPException(403, "Only the group owner can remove an admin")
+
+    db.delete(target)
+    db.commit()
+
+    await _notify_group_event(
+        db, user_id, "group_removed",
+        f"You were removed from {group.name}",
+        group, event_id=group.id, actor=None,
+    )
 
 
 @router.post("/groups/{group_id}/members/{user_id}/promote", response_model=GroupMemberOut)
@@ -797,6 +922,18 @@ async def send_group_message(
     db.refresh(msg)
 
     await _process_mentions(text, group, current_user, msg_id=msg.id, db=db)
+
+    # Reply ping — separate from mentions, since replying doesn't require
+    # @tagging anyone. Only fires if you didn't reply to your own message.
+    if reply_to_id is not None and parent.author_id != current_user.id:
+        await _notify_group_event(
+            db, parent.author_id, "group_reply",
+            f"{current_user.username} replied to your message in {group.name}",
+            group, event_id=msg.id, actor=current_user,
+            content=text[:200] if text else "📎 Attachment",
+        )
+
+    # Sending clears the sender's own typing indicator immediately, instead
     # of waiting out TYPING_ACTIVE_SECONDS for it to expire on its own.
     typing_state = db.query(GroupTypingState).filter(
         GroupTypingState.group_id == group_id,
