@@ -2,6 +2,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
+from pydantic import BaseModel
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
@@ -71,6 +72,10 @@ def _safe_extension(filename: str, fallback: str = "bin") -> str:
 router = APIRouter(prefix="/api/community", tags=["Community"])
 
 VALID_CHANNELS = {"general", "gaming", "strategy", "rpg", "esports", "memes", "tech"}
+
+
+class TransferOwnershipPayload(BaseModel):
+    new_owner_id: int
 
 
 # ─── Legacy sitewide channels (unchanged, unrelated to Groups) ──────────
@@ -729,8 +734,12 @@ def promote_member(
     current_user: User = Depends(get_current_user),
 ):
     group = _get_group_or_404(group_id, db)
-    acting_membership = _require_member(group, current_user)
-    _require_owner_or_admin(group, acting_membership, current_user)
+    _require_member(group, current_user)
+    # Only the owner assigns moderators — this used to allow any admin to
+    # promote, which meant admins could stack the group with peers of
+    # their own choosing. Ownership hierarchy is now strictly: owner
+    # assigns/removes admins, admins manage regular members.
+    _require_owner(group, current_user)
 
     target = db.query(GroupMembership).filter(
         GroupMembership.group_id == group_id,
@@ -756,6 +765,90 @@ def promote_member(
     )
 
 
+@router.post("/groups/{group_id}/members/{user_id}/demote", response_model=GroupMemberOut)
+def demote_member(
+    group_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Reverse of promote — owner only, same reasoning: assigning AND
+    removing moderator status is the owner's call, not a peer admin's."""
+    group = _get_group_or_404(group_id, db)
+    _require_member(group, current_user)
+    _require_owner(group, current_user)
+
+    target = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.user_id == user_id,
+    ).first()
+    if not target:
+        raise HTTPException(404, "That user isn't a member of this group")
+    if target.role != GroupRole.admin:
+        raise HTTPException(400, "That member isn't an admin")
+
+    target.role = GroupRole.member
+    db.commit()
+
+    friend_ids = _friend_ids_for(current_user.id, db)
+    return GroupMemberOut(
+        id=target.user.id,
+        username=target.user.username,
+        avatar_url=target.user.avatar_url,
+        online=target.user.online,
+        role=target.role,
+        is_friend=target.user.id in friend_ids,
+        is_self=target.user.id == current_user.id,
+    )
+
+
+@router.post("/groups/{group_id}/transfer-ownership", response_model=GroupOut)
+async def transfer_ownership(
+    group_id: int,
+    payload: TransferOwnershipPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Owner hands the crown to another existing member. The outgoing
+    owner drops to a regular member — they keep their spot in the group,
+    they just aren't in charge anymore. This is what the frontend calls
+    right before leave_group when an owner leaves a group that still has
+    other people in it; leave_group itself doesn't need to change, since
+    by the time it runs, group.owner_id no longer points at current_user."""
+    group = _get_group_or_404(group_id, db)
+    _require_owner(group, current_user)
+
+    if payload.new_owner_id == current_user.id:
+        raise HTTPException(400, "You're already the owner")
+
+    target = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.user_id == payload.new_owner_id,
+    ).first()
+    if not target:
+        raise HTTPException(404, "That user isn't a member of this group")
+
+    outgoing = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.user_id == current_user.id,
+    ).first()
+    if outgoing:
+        outgoing.role = GroupRole.member
+
+    target.role = GroupRole.owner
+    group.owner_id = payload.new_owner_id
+    db.commit()
+
+    await _notify_group_event(
+        db, payload.new_owner_id, "group_ownership_transferred",
+        f"You're now the owner of {group.name}",
+        group, event_id=group.id, actor=current_user,
+    )
+
+    group = _get_group_or_404(group_id, db)
+    return _serialize_group(group, current_user, db)
+
+
 @router.post("/groups/{group_id}/leave", status_code=204)
 def leave_group(
     group_id: int,
@@ -772,6 +865,81 @@ def leave_group(
     if membership:
         db.delete(membership)
         db.commit()
+
+
+@router.delete("/groups/{group_id}", status_code=204)
+async def disband_group(
+    group_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently deletes the group and everything in it — owner only.
+    This is deliberately separate from leave_group, which just removes one
+    membership row. Child tables are deleted explicitly in FK-safe order
+    rather than assuming the mapping has ON DELETE CASCADE configured, so
+    this doesn't 500 on the final Group delete if that assumption is wrong.
+    Storage cleanup (cover art, uploaded media, chat attachments) is
+    best-effort: failures there are swallowed so a flaky storage call never
+    blocks the group actually being gone from the user's perspective.
+    """
+    group = _get_group_or_404(group_id, db)
+    _require_owner(group, current_user)
+
+    group_name = group.name  # captured before delete — group is detached after commit
+    member_ids = [m.user_id for m in group.memberships if m.user_id != current_user.id]
+
+    # Capture storage references before the rows referencing them are gone.
+    cover_url = group.banner_url
+    media_urls = [row.image_url for row in db.query(GroupMedia.image_url).filter(GroupMedia.group_id == group_id).all()]
+    attachment_urls = [
+        row.attachment_url for row in
+        db.query(GroupMessage.attachment_url)
+        .filter(GroupMessage.group_id == group_id, GroupMessage.attachment_url.isnot(None))
+        .all()
+    ]
+
+    message_ids = [row.id for row in db.query(GroupMessage.id).filter(GroupMessage.group_id == group_id).all()]
+    if message_ids:
+        db.query(GroupMessageReaction).filter(GroupMessageReaction.message_id.in_(message_ids)).delete(synchronize_session=False)
+    db.query(GroupMessage).filter(GroupMessage.group_id == group_id).delete(synchronize_session=False)
+    db.query(GroupTypingState).filter(GroupTypingState.group_id == group_id).delete(synchronize_session=False)
+    db.query(GroupMedia).filter(GroupMedia.group_id == group_id).delete(synchronize_session=False)
+    db.query(GroupJoinRequest).filter(GroupJoinRequest.group_id == group_id).delete(synchronize_session=False)
+    db.query(GroupMembership).filter(GroupMembership.group_id == group_id).delete(synchronize_session=False)
+    db.delete(group)
+    db.commit()
+
+    if cover_url:
+        try:
+            _delete_stored_object(GROUP_COVER_BUCKET, cover_url)
+        except Exception:
+            pass
+    for url in media_urls:
+        try:
+            _delete_stored_object(GROUP_MEDIA_BUCKET, url)
+        except Exception:
+            pass
+    for url in attachment_urls:
+        try:
+            _delete_stored_object(GROUP_ATTACHMENT_BUCKET, url)
+        except Exception:
+            pass
+
+    for uid in member_ids:
+        try:
+            await push_to_user(uid, {
+                "type": "group_disbanded",
+                "id": group_id,
+                "sender_id": current_user.id,
+                "sender_username": current_user.username,
+                "sender_avatar_url": getattr(current_user, "avatar_url", None),
+                "content": f"{group_name} was disbanded by the owner",
+                "group_id": group_id,
+                "group_name": group_name,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
 
 
 @router.get("/groups/{group_id}/members", response_model=List[GroupMemberOut])
