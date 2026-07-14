@@ -7,6 +7,7 @@ import {
   Check, CheckCheck, X, Loader2, Clock, LogOut, Search, Bell, Paperclip, Smile,
   Camera, Trash2, ImagePlus, Mic, FileText, Download, MoreVertical, Eraser,
   ChevronDown, Pin, PinOff, Pencil, CornerUpLeft, UserMinus,
+  MessageSquare, Image as ImageIcon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import PageTour from '../components/onboarding/PageTour'
@@ -118,6 +119,12 @@ export default function GroupDetailPage() {
   const [removing, setRemoving] = useState({})
   const [confirmRemove, setConfirmRemove] = useState(null)
   const [newMessagesPending, setNewMessagesPending] = useState(false)
+
+  // ── Mobile layout: chat / members / media are shown one at a time via
+  // tabs instead of all stacking on top of each other. Desktop (lg+) keeps
+  // showing all three side by side, so this only drives visibility below
+  // that breakpoint — see the tab bar + section classNames in the render.
+  const [activeTab, setActiveTab] = useState('chat')
 
   // ── Reply / edit / react / pin / mentions / typing / search ──────────
   const [replyingTo, setReplyingTo] = useState(null)
@@ -832,8 +839,40 @@ export default function GroupDetailPage() {
         ready={!loading && !!group?.is_member}
       />
 
+      {/* mobile tab bar — chat / members / media, one section visible at a
+          time below lg. Desktop keeps the classic side-by-side layout, so
+          this bar itself is hidden there. */}
+      <div className="flex lg:hidden items-center gap-1 mb-3 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+        {[
+          { key: 'chat', label: 'Chat', icon: MessageSquare },
+          { key: 'members', label: 'Members', icon: Users, badge: members.length },
+          { key: 'media', label: 'Media', icon: ImageIcon, badge: combinedMedia.length },
+        ].map(({ key, label, icon: Icon, badge }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition ${
+              activeTab === key
+                ? 'bg-white dark:bg-slate-800 text-violet-600 dark:text-violet-400 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <span className="relative">
+              <Icon size={14} />
+              {key === 'members' && canManage && requests.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-rose-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
+                  {requests.length}
+                </span>
+              )}
+            </span>
+            <span className="truncate">{label}</span>
+            {!!badge && <span className="text-[10px] opacity-60 flex-shrink-0">{badge}</span>}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-col lg:flex-row gap-4">
-        <div className="flex-1 min-w-0 flex flex-col bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+        <div className={`${activeTab === 'chat' ? 'flex' : 'hidden'} lg:flex flex-1 min-w-0 flex-col bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden`}>
 
           {/* banner header */}
           <div className="relative h-32 sm:h-40 flex-shrink-0">
@@ -864,36 +903,36 @@ export default function GroupDetailPage() {
               </>
             )}
 
-            <div className="absolute bottom-2 sm:bottom-3 left-3 sm:left-4 right-3 sm:right-4 flex items-end justify-between gap-2 sm:gap-3 flex-wrap">
+            <div className="absolute bottom-2 sm:bottom-3 left-3 sm:left-4 right-3 sm:right-4 flex items-end justify-between gap-2 sm:gap-3">
               <div className="flex items-end gap-2 sm:gap-3 min-w-0">
                 <div className="w-11 h-11 sm:w-14 sm:h-14 rounded-2xl overflow-hidden bg-violet-600 border-2 border-slate-950 flex items-center justify-center text-white font-bold text-lg sm:text-xl flex-shrink-0">
                   {group.banner_url ? <img src={group.banner_url} className="w-full h-full object-cover" alt="" /> : group.name[0]?.toUpperCase()}
                 </div>
                 <div className="min-w-0 pb-0.5">
                   <h2 className="font-display font-bold text-white text-base sm:text-xl truncate drop-shadow">{group.name}</h2>
-                  <p className="text-[11px] sm:text-xs text-slate-300 flex items-center gap-1.5">
-                    <Circle size={7} className="text-emerald-400 fill-current" /> {group.activity_status} · {group.member_count.toLocaleString()} Operators
+                  <p className="text-[11px] sm:text-xs text-slate-300 flex items-center gap-1.5 truncate">
+                    <Circle size={7} className="text-emerald-400 fill-current flex-shrink-0" /> <span className="truncate">{group.activity_status} · {group.member_count.toLocaleString()} Operators</span>
                   </p>
                 </div>
               </div>
 
-              <div className="flex-shrink-0 pb-0.5 flex items-center gap-2">
+              <div className="flex-shrink-0 pb-0.5 flex items-center gap-1.5 sm:gap-2">
                 {canManage && (
-                  <button onClick={openAddMembers} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg">
-                    <UserPlus size={14} /> Invite
+                  <button onClick={openAddMembers} className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg flex-shrink-0">
+                    <UserPlus size={14} /> <span className="hidden sm:inline">Invite</span>
                   </button>
                 )}
                 {group.is_member && (
                   <button
                     onClick={() => setSearchOpen(s => !s)}
                     title="Search messages"
-                    className="w-9 h-9 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-white flex items-center justify-center hover:bg-black/60"
+                    className="w-9 h-9 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-white flex items-center justify-center hover:bg-black/60 flex-shrink-0"
                   >
                     <Search size={15} />
                   </button>
                 )}
                 {group.is_member ? (
-                  <div className="relative">
+                  <div className="relative flex-shrink-0">
                     <button
                       onClick={() => setShowOptions(s => !s)}
                       className="w-9 h-9 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-white flex items-center justify-center hover:bg-black/60"
@@ -928,13 +967,13 @@ export default function GroupDetailPage() {
                     )}
                   </div>
                 ) : group.has_pending_request ? (
-                  <button onClick={handleCancelRequest} disabled={joining} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-bold disabled:opacity-50">
-                    <Clock size={14} /> <span>Cancel</span><span className="hidden sm:inline">&nbsp;Request</span>
+                  <button onClick={handleCancelRequest} disabled={joining} className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-slate-600 dark:text-slate-300 text-xs sm:text-sm font-bold disabled:opacity-50 flex-shrink-0 whitespace-nowrap">
+                    <Clock size={14} className="flex-shrink-0" /> <span>Cancel</span><span className="hidden sm:inline">&nbsp;Request</span>
                   </button>
                 ) : (
-                  <button onClick={handleRequestJoin} disabled={joining} className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg disabled:opacity-50">
-                    {joining ? <Loader2 size={14} className="animate-spin" /> : null}
-                    {joining ? 'Sending…' : 'Request to Join'}
+                  <button onClick={handleRequestJoin} disabled={joining} className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-500 text-white text-xs sm:text-sm font-bold shadow-lg disabled:opacity-50 flex-shrink-0 whitespace-nowrap">
+                    {joining ? <Loader2 size={14} className="animate-spin flex-shrink-0" /> : null}
+                    {joining ? 'Sending…' : <><span className="sm:hidden">Join</span><span className="hidden sm:inline">Request to Join</span></>}
                   </button>
                 )}
               </div>
@@ -1332,6 +1371,10 @@ export default function GroupDetailPage() {
         {/* sidebar */}
         <div className="w-full lg:w-72 flex-shrink-0 flex flex-col gap-4">
 
+          {/* Members tab content — join requests + member list, shown together
+              since managing requests is part of managing members. */}
+          <div className={`${activeTab === 'members' ? 'flex' : 'hidden'} lg:flex flex-col gap-4`}>
+
           {canManage && requests.length > 0 && (
             <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4">
               <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1">
@@ -1421,6 +1464,11 @@ export default function GroupDetailPage() {
             </div>
           </div>
 
+          </div>
+          {/* end members tab content */}
+
+          {/* Media tab content */}
+          <div className={`${activeTab === 'media' ? 'block' : 'hidden'} lg:block`}>
           <div className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl p-4" data-tour="group-media-panel">
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Media Feed</h4>
@@ -1474,6 +1522,8 @@ export default function GroupDetailPage() {
               </ol>
             </div>
           )}
+          </div>
+          {/* end media tab content */}
         </div>
       </div>
 

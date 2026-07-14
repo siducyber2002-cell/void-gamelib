@@ -196,12 +196,12 @@ export default function CommunityPage() {
                   <div className="flex items-start justify-between gap-2 flex-wrap">
                     <h3 className="font-display font-bold text-lg text-violet-600 dark:text-violet-400 group-hover:text-violet-500 dark:group-hover:text-violet-300 truncate">{g.name}</h3>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {g.highlight_tag && <span className="text-xs text-amber-400 font-semibold whitespace-nowrap">{g.highlight_tag}</span>}
+                      {g.highlight_tag && <span className="text-xs text-amber-400 font-semibold whitespace-nowrap max-w-[110px] truncate">{g.highlight_tag}</span>}
                       <AvatarStack members={previewMembers} size={26} />
                     </div>
                   </div>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 max-w-2xl">{g.description}</p>
-                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-400 dark:text-slate-500">
+                  <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-slate-400 dark:text-slate-500">
                     <span className="flex items-center gap-1"><Users size={12} /> {g.member_count.toLocaleString()} Members</span>
                     <span className="flex items-center gap-1"><Circle size={7} className="text-emerald-400 fill-current" /> {g.activity_status}</span>
                     {g.is_owner && <span className="flex items-center gap-1 text-amber-400 font-semibold"><ShieldCheck size={12} /> Owner</span>}
