@@ -1370,7 +1370,7 @@ export default function GroupDetailPage() {
         </div>
 
         {/* sidebar */}
-        <div className={`${activeTab === 'chat' ? 'hidden' : 'flex'} lg:flex w-full lg:w-72 flex-1 min-h-0 overflow-y-auto lg:flex-shrink-0 lg:h-auto lg:overflow-visible flex-col gap-4`}>
+        <div className={`${activeTab === 'chat' ? 'hidden' : 'flex'} lg:flex w-full lg:w-60 flex-1 min-h-0 overflow-y-auto lg:flex-shrink-0 lg:h-auto lg:overflow-visible flex-col gap-4`}>
 
           {/* Members tab content — join requests + member list, shown together
               since managing requests is part of managing members. */}
