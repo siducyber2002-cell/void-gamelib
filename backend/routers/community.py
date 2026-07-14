@@ -372,6 +372,9 @@ async def _notify_group_event(
         })
     except Exception:
         pass  # best-effort — the Notification row above is the source of truth
+
+
+def _get_group_or_404(group_id: int, db: Session) -> Group:
     group = (
         db.query(Group)
         .options(joinedload(Group.memberships).joinedload(GroupMembership.user))
