@@ -7,7 +7,7 @@ import {
   Check, CheckCheck, X, Loader2, Clock, LogOut, Search, Bell, Paperclip, Smile,
   Camera, Trash2, ImagePlus, Mic, FileText, Download, MoreVertical, Eraser,
   ChevronDown, Pin, PinOff, Pencil, CornerUpLeft, UserMinus,
-  MessageSquare, Image as ImageIcon,
+  MessageSquare, Image as ImageIcon, ShieldOff, Crown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import PageTour from '../components/onboarding/PageTour'
@@ -119,6 +119,20 @@ export default function GroupDetailPage() {
   const [removing, setRemoving] = useState({})
   const [confirmRemove, setConfirmRemove] = useState(null)
   const [newMessagesPending, setNewMessagesPending] = useState(false)
+
+  // ── Ownership hierarchy: demote (owner-only), leave (with mandatory
+  // succession for owners), and standalone disband ──────────────────────
+  const [demoting, setDemoting] = useState({})
+  const [confirmDemote, setConfirmDemote] = useState(null)
+  const [leaving, setLeaving] = useState(false)
+  // leaveFlow: null | 'confirm' (regular member/admin) | 'transfer' (owner,
+  // other members exist — must hand off first) | 'solo' (owner is the only
+  // member left — leaving IS disbanding)
+  const [leaveFlow, setLeaveFlow] = useState(null)
+  const [transferTarget, setTransferTarget] = useState(null)
+  const [transferring, setTransferring] = useState(false)
+  const [showDisbandConfirm, setShowDisbandConfirm] = useState(false)
+  const [disbanding, setDisbanding] = useState(false)
 
   // ── Mobile layout: chat / members / media are shown one at a time via
   // tabs instead of all stacking on top of each other. Desktop (lg+) keeps
@@ -317,13 +331,73 @@ export default function GroupDetailPage() {
     }
   }
 
-  const handleLeave = async () => {
+  // Opens the right confirmation flow depending on who's leaving:
+  // - regular member/admin → simple confirm
+  // - owner with others still in the group → must pick a successor first
+  // - owner who's the last one left → leaving = disbanding, no successor possible
+  const openLeaveFlow = () => {
+    setShowOptions(false)
+    if (group.is_owner) {
+      const others = members.filter(m => !m.is_self)
+      setTransferTarget(null)
+      setLeaveFlow(others.length === 0 ? 'solo' : 'transfer')
+    } else {
+      setLeaveFlow('confirm')
+    }
+  }
+
+  const leaveGroup = async () => {
+    setLeaving(true)
     try {
       await axios.post(`/api/community/groups/${groupId}/leave`)
       toast.success(`Left ${group.name}`)
       navigate('/community')
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Could not leave group')
+      setLeaving(false)
+    }
+  }
+
+  const transferAndLeave = async () => {
+    if (!transferTarget) return
+    setTransferring(true)
+    try {
+      await axios.post(`/api/community/groups/${groupId}/transfer-ownership`, { new_owner_id: transferTarget.id })
+      toast.success(`Ownership transferred to ${transferTarget.username}`)
+      await axios.post(`/api/community/groups/${groupId}/leave`)
+      toast.success(`Left ${group.name}`)
+      navigate('/community')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not complete the handover — you have not left the group')
+      setTransferring(false)
+    }
+  }
+
+  // Used both for the standalone "Disband Group" action and for the
+  // "you're the last member" leave path — both permanently delete the group.
+  const disbandGroup = async () => {
+    setDisbanding(true)
+    try {
+      await axios.delete(`/api/community/groups/${groupId}`)
+      toast.success(`${group.name} has been disbanded`)
+      navigate('/community')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not disband group')
+      setDisbanding(false)
+    }
+  }
+
+  const demoteAdmin = async (member) => {
+    setDemoting(s => ({ ...s, [member.id]: true }))
+    try {
+      await axios.post(`/api/community/groups/${groupId}/members/${member.id}/demote`)
+      setMembers(ms => ms.map(m => (m.id === member.id ? { ...m, role: 'member' } : m)))
+      toast.success(`${member.username} is no longer an admin`)
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not demote member')
+    } finally {
+      setDemoting(s => ({ ...s, [member.id]: false }))
+      setConfirmDemote(null)
     }
   }
 
@@ -924,9 +998,17 @@ export default function GroupDetailPage() {
                               <Eraser size={14} /> Clear Chat
                             </button>
                           )}
-                          <button onClick={handleLeave} className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-rose-400 hover:bg-slate-200 dark:hover:bg-slate-800 text-left">
+                          <button onClick={openLeaveFlow} className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-rose-400 hover:bg-slate-200 dark:hover:bg-slate-800 text-left">
                             <LogOut size={14} /> Leave Group
                           </button>
+                          {group.is_owner && (
+                            <button
+                              onClick={() => { setShowOptions(false); setShowDisbandConfirm(true) }}
+                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-rose-500 font-semibold hover:bg-rose-500/10 text-left border-t border-slate-200 dark:border-slate-800"
+                            >
+                              <Trash2 size={14} /> Disband Group
+                            </button>
+                          )}
                         </div>
                       </>
                     )}
@@ -1426,7 +1508,9 @@ export default function GroupDetailPage() {
                     <span className="text-sm text-slate-600 dark:text-slate-300 truncate flex-1">{m.username}</span>
                     {m.role === 'owner' && <ShieldCheck size={12} className="text-amber-400 flex-shrink-0" title="Owner" />}
                     {m.role === 'admin' && <ShieldAlert size={12} className="text-sky-400 flex-shrink-0" title="Admin" />}
-                    {canManage && !m.is_self && m.role !== 'owner' && m.role !== 'admin' && (
+                    {/* Only the owner assigns/removes moderators — admins manage regular
+                        members but don't get to create or remove other admins. */}
+                    {group.is_owner && !m.is_self && m.role !== 'owner' && m.role !== 'admin' && (
                       <button
                         onClick={() => setConfirmPromote(m)}
                         disabled={promoting[m.id]}
@@ -1434,6 +1518,16 @@ export default function GroupDetailPage() {
                         className="w-6 h-6 rounded-md bg-sky-600/15 text-sky-400 hover:bg-sky-600/25 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
                       >
                         {promoting[m.id] ? <Loader2 size={11} className="animate-spin" /> : <ShieldAlert size={11} />}
+                      </button>
+                    )}
+                    {group.is_owner && !m.is_self && m.role === 'admin' && (
+                      <button
+                        onClick={() => setConfirmDemote(m)}
+                        disabled={demoting[m.id]}
+                        title="Remove admin"
+                        className="w-6 h-6 rounded-md bg-amber-600/15 text-amber-500 hover:bg-amber-600/25 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
+                      >
+                        {demoting[m.id] ? <Loader2 size={11} className="animate-spin" /> : <ShieldOff size={11} />}
                       </button>
                     )}
                     {/* Remove: owner/admin can remove regular members; admins can't remove
@@ -1545,6 +1639,150 @@ export default function GroupDetailPage() {
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold disabled:opacity-50"
               >
                 {clearing ? <Loader2 size={14} className="animate-spin" /> : <Eraser size={14} />} Clear Chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Leave flow: branches by role + group size, never a single-click leave ── */}
+      {leaveFlow && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => !leaving && !transferring && setLeaveFlow(null)}
+        >
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+            {leaveFlow === 'confirm' && (
+              <>
+                <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg">Leave {group.name}?</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  You'll lose access to this group's chat and media right away. You can send a new request to join later.
+                </p>
+                <div className="flex gap-2 justify-end mt-1">
+                  <button onClick={() => setLeaveFlow(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={leaveGroup}
+                    disabled={leaving}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold disabled:opacity-50"
+                  >
+                    {leaving ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />} Leave Group
+                  </button>
+                </div>
+              </>
+            )}
+
+            {leaveFlow === 'solo' && (
+              <>
+                <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg">You're the last one here</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  There's no one left to hand ownership to. Leaving now permanently disbands <strong>{group.name}</strong> — its chat, media, and member list are erased for everyone, and this can't be undone.
+                </p>
+                <div className="flex gap-2 justify-end mt-1">
+                  <button onClick={() => setLeaveFlow(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={disbandGroup}
+                    disabled={disbanding}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold disabled:opacity-50"
+                  >
+                    {disbanding ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Leave &amp; Disband
+                  </button>
+                </div>
+              </>
+            )}
+
+            {leaveFlow === 'transfer' && (
+              <>
+                <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg flex items-center gap-2">
+                  <Crown size={16} className="text-amber-400" /> Hand over ownership
+                </h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Pick who takes over as owner of <strong>{group.name}</strong> before you go. They'll get full control — cover art, admins, join requests, everything.
+                </p>
+                <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
+                  {members.filter(m => !m.is_self).map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => setTransferTarget(m)}
+                      className={`flex items-center gap-2 px-2.5 py-2 rounded-lg border text-left transition ${
+                        transferTarget?.id === m.id
+                          ? 'border-violet-500 bg-violet-500/10'
+                          : 'border-slate-200 dark:border-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-white font-bold text-xs overflow-hidden flex-shrink-0">
+                        {m.avatar_url ? <img src={m.avatar_url} className="w-full h-full object-cover" alt="" /> : m.username[0]?.toUpperCase()}
+                      </div>
+                      <span className="text-sm text-slate-700 dark:text-slate-200 truncate flex-1">{m.username}</span>
+                      {m.role === 'admin' && <span className="text-[10px] font-bold text-sky-500 flex-shrink-0">ADMIN</span>}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex gap-2 justify-end mt-1">
+                  <button onClick={() => setLeaveFlow(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={transferAndLeave}
+                    disabled={!transferTarget || transferring}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold disabled:opacity-50"
+                  >
+                    {transferring ? <Loader2 size={14} className="animate-spin" /> : <Crown size={14} />} Transfer &amp; Leave
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Standalone disband — separate from leaving, always available to the owner ── */}
+      {showDisbandConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !disbanding && setShowDisbandConfirm(false)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+            <h2 className="font-display font-bold text-rose-500 text-lg flex items-center gap-2">
+              <Trash2 size={18} /> Disband {group.name}?
+            </h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              This permanently deletes the group for <strong>every</strong> member — all messages, media, and the member list are erased and can't be recovered. This is different from leaving: nobody keeps access afterward, including you.
+            </p>
+            <div className="flex gap-2 justify-end mt-1">
+              <button onClick={() => setShowDisbandConfirm(false)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
+                Cancel
+              </button>
+              <button
+                onClick={disbandGroup}
+                disabled={disbanding}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold disabled:opacity-50"
+              >
+                {disbanding ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Disband Group
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Demote confirm — owner only, mirrors the promote flow ── */}
+      {confirmDemote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setConfirmDemote(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+            <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg">Remove {confirmDemote.username} as admin?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              They'll go back to a regular member — no more inviting members, approving join requests, changing the cover, or clearing chat.
+            </p>
+            <div className="flex gap-2 justify-end mt-1">
+              <button onClick={() => setConfirmDemote(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
+                Cancel
+              </button>
+              <button
+                onClick={() => demoteAdmin(confirmDemote)}
+                disabled={demoting[confirmDemote.id]}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold disabled:opacity-50"
+              >
+                {demoting[confirmDemote.id] ? <Loader2 size={14} className="animate-spin" /> : <ShieldOff size={14} />} Remove Admin
               </button>
             </div>
           </div>
