@@ -6,7 +6,7 @@ import {
   ArrowLeft, Send, Users, Circle, ShieldCheck, ShieldAlert, UserPlus,
   Check, CheckCheck, X, Loader2, Clock, LogOut, Search, Bell, Paperclip, Smile,
   Camera, Trash2, ImagePlus, Mic, FileText, Download, MoreVertical, Eraser,
-  ChevronDown, Pin, PinOff, Pencil, CornerUpLeft,
+  ChevronDown, Pin, PinOff, Pencil, CornerUpLeft, UserMinus,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import PageTour from '../components/onboarding/PageTour'
@@ -115,6 +115,8 @@ export default function GroupDetailPage() {
   const [clearing, setClearing] = useState(false)
   const [promoting, setPromoting] = useState({})
   const [confirmPromote, setConfirmPromote] = useState(null)
+  const [removing, setRemoving] = useState({})
+  const [confirmRemove, setConfirmRemove] = useState(null)
   const [newMessagesPending, setNewMessagesPending] = useState(false)
 
   // ── Reply / edit / react / pin / mentions / typing / search ──────────
@@ -549,6 +551,21 @@ export default function GroupDetailPage() {
     } finally {
       setPromoting(s => ({ ...s, [member.id]: false }))
       setConfirmPromote(null)
+    }
+  }
+
+  const removeMember = async (member) => {
+    setRemoving(s => ({ ...s, [member.id]: true }))
+    try {
+      await axios.delete(`/api/community/groups/${groupId}/members/${member.id}`)
+      setMembers(ms => ms.filter(m => m.id !== member.id))
+      setGroup(g => ({ ...g, member_count: Math.max(0, g.member_count - 1) }))
+      toast.success(`${member.username} removed from the group`)
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not remove member')
+    } finally {
+      setRemoving(s => ({ ...s, [member.id]: false }))
+      setConfirmRemove(null)
     }
   }
 
@@ -1375,6 +1392,19 @@ export default function GroupDetailPage() {
                         {promoting[m.id] ? <Loader2 size={11} className="animate-spin" /> : <ShieldAlert size={11} />}
                       </button>
                     )}
+                    {/* Remove: owner/admin can remove regular members; admins can't remove
+                        other admins (or the owner) — only the owner can do that, same tier
+                        the backend enforces. */}
+                    {canManage && !m.is_self && m.role !== 'owner' && (m.role !== 'admin' || group.is_owner) && (
+                      <button
+                        onClick={() => setConfirmRemove(m)}
+                        disabled={removing[m.id]}
+                        title="Remove from group"
+                        className="w-6 h-6 rounded-md bg-rose-600/15 text-rose-400 hover:bg-rose-600/25 flex items-center justify-center flex-shrink-0 disabled:opacity-50"
+                      >
+                        {removing[m.id] ? <Loader2 size={11} className="animate-spin" /> : <UserMinus size={11} />}
+                      </button>
+                    )}
                     {!m.is_self && !m.is_friend && (
                       <button
                         onClick={() => !sent && sendFriendRequest(m)}
@@ -1487,6 +1517,29 @@ export default function GroupDetailPage() {
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-bold disabled:opacity-50"
               >
                 {promoting[confirmPromote.id] ? <Loader2 size={14} className="animate-spin" /> : <ShieldAlert size={14} />} Make Admin
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmRemove && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setConfirmRemove(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col gap-3">
+            <h2 className="font-display font-bold text-slate-900 dark:text-white text-lg">Remove {confirmRemove.username} from the group?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              They'll lose access to {group.name}'s chat and media immediately, and would need to request to join again to come back.
+            </p>
+            <div className="flex gap-2 justify-end mt-1">
+              <button onClick={() => setConfirmRemove(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
+                Cancel
+              </button>
+              <button
+                onClick={() => removeMember(confirmRemove)}
+                disabled={removing[confirmRemove.id]}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-sm font-bold disabled:opacity-50"
+              >
+                {removing[confirmRemove.id] ? <Loader2 size={14} className="animate-spin" /> : <UserMinus size={14} />} Remove
               </button>
             </div>
           </div>

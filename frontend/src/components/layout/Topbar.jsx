@@ -251,6 +251,20 @@ function MiniVoidLogo({ dark }) {
 }
 
 // ── Notification Bell — global, lives here so it shows on every page ──
+// Bell-dropdown icon/background per group event type — mirrors the live
+// toast styling in ChatNotifyContext.jsx (different component, same
+// palette) so a mention/reply/etc looks the same whether it's caught live
+// or picked up later from the bell.
+const GROUP_NOTIF_META = {
+  group_mention:       { icon: '💬', bg: '#8b5cf618' },
+  group_reply:         { icon: '↩️', bg: '#8b5cf618' },
+  group_join_request:  { icon: '🙋', bg: '#f59e0b18' },
+  group_join_accepted: { icon: '🎉', bg: '#10b98118' },
+  group_join_rejected: { icon: '🚫', bg: '#64748b18' },
+  group_member_added:  { icon: '➕', bg: '#06b6d418' },
+  group_removed:       { icon: '👋', bg: '#f43f5e18' },
+}
+
 function NotificationBell({ dark }) {
   const navigate = useNavigate()
   const [open, setOpen]       = useState(false)
@@ -508,31 +522,34 @@ function NotificationBell({ dark }) {
               </div>
             ))}
 
-            {feed.map((n, i) => (
+            {feed.map((n, i) => {
+              const groupMeta = GROUP_NOTIF_META[n.type]
+              const isGroupEvent = !!groupMeta && !!n.detail
+              return (
               <div
                 key={n.id}
                 onClick={() => {
                   setOpen(false)
                   if (n.type === 'friend_accepted' || n.action === 'made_friend') navigate('/friends')
-                  else if (n.type === 'group_mention' && n.detail) navigate(`/community/${n.detail}`)
+                  else if (isGroupEvent) navigate(`/community/${n.detail}`)
                 }}
                 style={{
                   padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10,
-                  cursor: (n.type === 'friend_accepted' || n.action === 'made_friend' || (n.type === 'group_mention' && n.detail)) ? 'pointer' : 'default',
+                  cursor: (n.type === 'friend_accepted' || n.action === 'made_friend' || isGroupEvent) ? 'pointer' : 'default',
                   borderBottom: i < feed.length - 1 ? `1px solid ${border}` : 'none',
                 }}
               >
                 <div style={{
                   width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
-                  background: n.type === 'level_up' ? '#f59e0b18' : n.type === 'friend_accepted' ? '#10b98118' : n.type === 'group_mention' ? '#3b82f618' : '#a855f718',
+                  background: n.type === 'level_up' ? '#f59e0b18' : n.type === 'friend_accepted' ? '#10b98118' : groupMeta ? groupMeta.bg : '#a855f718',
                   display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14,
                 }}>
                   {n.type === 'level_up'
                     ? '🎉'
                     : n.type === 'friend_accepted'
                       ? '🤝'
-                      : n.type === 'group_mention'
-                        ? '💬'
+                      : groupMeta
+                        ? groupMeta.icon
                         : (XP_LABELS[n.action]?.icon || '⚡')}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -551,7 +568,8 @@ function NotificationBell({ dark }) {
                   )}
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         </div>,
         document.body
