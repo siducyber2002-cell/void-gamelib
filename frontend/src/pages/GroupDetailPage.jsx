@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -112,6 +113,14 @@ export default function GroupDetailPage() {
   const [mediaUploading, setMediaUploading] = useState(false)
   const [mediaDeleting, setMediaDeleting] = useState({})
   const [showOptions, setShowOptions] = useState(false)
+  // The options button lives inside the banner header, which has
+  // overflow-hidden so the cover image clips to rounded corners. That
+  // clips the dropdown too if it's rendered as a normal absolute child, so
+  // it's portaled to document.body instead — which means we need to
+  // compute its screen position manually rather than relying on
+  // top-full/right-0 relative to a positioned ancestor.
+  const optionsBtnRef = useRef(null)
+  const [optionsMenuPos, setOptionsMenuPos] = useState(null)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [clearing, setClearing] = useState(false)
   const [promoting, setPromoting] = useState({})
@@ -973,15 +982,25 @@ export default function GroupDetailPage() {
                 {group.is_member ? (
                   <div className="relative flex-shrink-0">
                     <button
-                      onClick={() => setShowOptions(s => !s)}
+                      ref={optionsBtnRef}
+                      onClick={() => {
+                        if (!showOptions && optionsBtnRef.current) {
+                          const rect = optionsBtnRef.current.getBoundingClientRect()
+                          setOptionsMenuPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right })
+                        }
+                        setShowOptions(s => !s)
+                      }}
                       className="w-9 h-9 rounded-xl bg-black/40 backdrop-blur border border-white/10 text-white flex items-center justify-center hover:bg-black/60"
                     >
                       <MoreVertical size={16} />
                     </button>
-                    {showOptions && (
+                    {showOptions && optionsMenuPos && createPortal(
                       <>
-                        <div className="fixed inset-0 z-20" onClick={() => setShowOptions(false)} />
-                        <div className="absolute right-0 top-full mt-2 w-48 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-30">
+                        <div className="fixed inset-0 z-40" onClick={() => setShowOptions(false)} />
+                        <div
+                          style={{ position: 'fixed', top: optionsMenuPos.top, right: optionsMenuPos.right }}
+                          className="w-48 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50"
+                        >
                           {pinnedMessages.length > 0 && (
                             <button
                               onClick={() => { setShowOptions(false); setShowPinnedRail(true) }}
@@ -1010,7 +1029,8 @@ export default function GroupDetailPage() {
                             </button>
                           )}
                         </div>
-                      </>
+                      </>,
+                      document.body
                     )}
                   </div>
                 ) : group.has_pending_request ? (
@@ -1721,17 +1741,25 @@ export default function GroupDetailPage() {
                     </button>
                   ))}
                 </div>
-                <div className="flex gap-2 justify-end mt-1">
-                  <button onClick={() => setLeaveFlow(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
-                    Cancel
-                  </button>
+                <div className="flex items-center justify-between gap-2 mt-1">
                   <button
-                    onClick={transferAndLeave}
-                    disabled={!transferTarget || transferring}
-                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold disabled:opacity-50"
+                    onClick={() => { setLeaveFlow(null); setShowDisbandConfirm(true) }}
+                    className="text-xs text-rose-500 hover:text-rose-400 font-semibold underline underline-offset-2"
                   >
-                    {transferring ? <Loader2 size={14} className="animate-spin" /> : <Crown size={14} />} Transfer &amp; Leave
+                    Rather disband the group instead?
                   </button>
+                  <div className="flex gap-2">
+                    <button onClick={() => setLeaveFlow(null)} className="px-3.5 py-2 rounded-lg text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={transferAndLeave}
+                      disabled={!transferTarget || transferring}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-bold disabled:opacity-50"
+                    >
+                      {transferring ? <Loader2 size={14} className="animate-spin" /> : <Crown size={14} />} Transfer &amp; Leave
+                    </button>
+                  </div>
                 </div>
               </>
             )}
