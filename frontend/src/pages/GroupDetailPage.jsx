@@ -827,7 +827,7 @@ export default function GroupDetailPage() {
   if (!group) return null
 
   return (
-    <div className="p-4 md:p-6 animate-fade-in">
+    <div className="fixed inset-0 z-30 flex flex-col bg-white dark:bg-slate-950 p-2 sm:p-3 lg:static lg:z-auto lg:block lg:bg-transparent lg:dark:bg-transparent lg:p-4 lg:animate-fade-in overflow-hidden lg:overflow-visible">
       {/* ── First-time guided tour ── */}
       {/* pageKey is fixed (not per-group) — the UI is identical across every
           group, so one "seen" flag covers all of them. Gated on is_member
@@ -839,43 +839,8 @@ export default function GroupDetailPage() {
         ready={!loading && !!group?.is_member}
       />
 
-      {/* mobile tab bar — chat / members / media, one section visible at a
-          time below lg. Desktop keeps the classic side-by-side layout, so
-          this bar itself is hidden there. */}
-      <div className="flex lg:hidden items-center gap-1 mb-3 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
-        {[
-          { key: 'chat', label: 'Chat', icon: MessageSquare },
-          { key: 'members', label: 'Members', icon: Users, badge: members.length },
-          { key: 'media', label: 'Media', icon: ImageIcon, badge: combinedMedia.length },
-        ].map(({ key, label, icon: Icon, badge }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition ${
-              activeTab === key
-                ? 'bg-white dark:bg-slate-800 text-violet-600 dark:text-violet-400 shadow-sm'
-                : 'text-slate-500 dark:text-slate-400'
-            }`}
-          >
-            <span className="relative">
-              <Icon size={14} />
-              {key === 'members' && canManage && requests.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-rose-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
-                  {requests.length}
-                </span>
-              )}
-            </span>
-            <span className="truncate">{label}</span>
-            {!!badge && <span className="text-[10px] opacity-60 flex-shrink-0">{badge}</span>}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className={`${activeTab === 'chat' ? 'flex' : 'hidden'} lg:flex flex-1 min-w-0 flex-col bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden`}>
-
           {/* banner header */}
-          <div className="relative h-32 sm:h-40 flex-shrink-0">
+          <div className="relative h-32 sm:h-40 flex-shrink-0 rounded-3xl overflow-hidden mb-3 lg:mb-4">
             {group.banner_url ? (
               <img src={group.banner_url} className="absolute inset-0 w-full h-full object-cover" alt="" />
             ) : (
@@ -980,9 +945,45 @@ export default function GroupDetailPage() {
             </div>
           </div>
 
+      {/* mobile tab bar — chat / members / media, one section visible at a
+          time below lg. Desktop keeps the classic side-by-side layout, so
+          this bar itself is hidden there. */}
+      <div className="flex lg:hidden flex-shrink-0 items-center gap-1 mb-3 p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+        {[
+          { key: 'chat', label: 'Chat', icon: MessageSquare },
+          { key: 'members', label: 'Members', icon: Users, badge: members.length },
+          { key: 'media', label: 'Media', icon: ImageIcon, badge: combinedMedia.length },
+        ].map(({ key, label, icon: Icon, badge }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-bold transition ${
+              activeTab === key
+                ? 'bg-white dark:bg-slate-800 text-violet-600 dark:text-violet-400 shadow-sm'
+                : 'text-slate-500 dark:text-slate-400'
+            }`}
+          >
+            <span className="relative">
+              <Icon size={14} />
+              {key === 'members' && canManage && requests.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-rose-500 text-white text-[8px] font-bold flex items-center justify-center leading-none">
+                  {requests.length}
+                </span>
+              )}
+            </span>
+            <span className="truncate">{label}</span>
+            {!!badge && <span className="text-[10px] opacity-60 flex-shrink-0">{badge}</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-4 flex-1 min-h-0">
+        <div className={`${activeTab === 'chat' ? 'flex' : 'hidden'} lg:flex flex-1 min-w-0 min-h-0 flex-col bg-white dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden`}>
+
+
           {/* pinned rail */}
           {group.is_member && pinnedMessages.length > 0 && showPinnedRail && (
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-amber-500/5 overflow-x-auto">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-200 dark:border-slate-800 bg-amber-500/5 overflow-x-auto flex-shrink-0">
               <Pin size={13} className="text-amber-500 flex-shrink-0" />
               <div className="flex gap-2 flex-1 min-w-0">
                 {pinnedMessages.map(p => (
@@ -1003,7 +1004,7 @@ export default function GroupDetailPage() {
           )}
 
           {/* messages */}
-          <div className="relative flex-1 min-h-[320px]">
+          <div className="relative flex-1 min-h-0 lg:min-h-[320px]">
 
           {/* search overlay */}
           {searchOpen && (
@@ -1242,7 +1243,7 @@ export default function GroupDetailPage() {
 
           {/* typing indicator */}
           {group.is_member && typingUsers.length > 0 && (
-            <div className="px-5 pt-2 text-xs text-slate-400 dark:text-slate-500 italic flex items-center gap-1.5">
+            <div className="px-5 pt-2 text-xs text-slate-400 dark:text-slate-500 italic flex items-center gap-1.5 flex-shrink-0">
               <span className="flex gap-0.5">
                 <span className="w-1 h-1 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '0ms' }} />
                 <span className="w-1 h-1 rounded-full bg-violet-400 animate-bounce" style={{ animationDelay: '120ms' }} />
@@ -1258,7 +1259,7 @@ export default function GroupDetailPage() {
 
           {/* input */}
           {group.is_member && (
-            <div className="px-3 sm:px-5 py-3 sm:py-4 border-t border-slate-200 dark:border-slate-800 relative">
+            <div className="px-3 sm:px-5 py-3 sm:py-4 border-t border-slate-200 dark:border-slate-800 relative flex-shrink-0">
 
               {showEmoji && (
                 <div className="absolute bottom-full right-2 sm:right-5 mb-2 w-64 max-w-[85vw] bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-3 shadow-2xl z-20">
@@ -1369,7 +1370,7 @@ export default function GroupDetailPage() {
         </div>
 
         {/* sidebar */}
-        <div className="w-full lg:w-72 flex-shrink-0 flex flex-col gap-4">
+        <div className="w-full lg:w-72 flex-1 min-h-0 overflow-y-auto lg:flex-shrink-0 lg:h-auto lg:overflow-visible flex flex-col gap-4">
 
           {/* Members tab content — join requests + member list, shown together
               since managing requests is part of managing members. */}
