@@ -1,7 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import toast from 'react-hot-toast'
-import { MessageCircle, UserPlus, Users, AtSign, CornerUpLeft, PartyPopper, UserMinus, XCircle } from 'lucide-react'
 import { useAuth } from './AuthContext'
 import { xpEventBus } from '../components/XPToast'
 
@@ -9,72 +7,6 @@ const ChatNotifyContext = createContext({
   activeChatFriendId: null,
   setActiveChatFriendId: () => {},
 })
-
-const TYPE_META = {
-  new_dm:              { icon: MessageCircle, accent: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #06b6d4)' },
-  friend_request:      { icon: UserPlus,      accent: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #059669)' },
-  friend_accepted:     { icon: Users,         accent: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #06b6d4)' },
-  group_mention:       { icon: AtSign,        accent: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #a855f7)' },
-  group_reply:         { icon: CornerUpLeft,  accent: '#8b5cf6', gradient: 'linear-gradient(135deg, #8b5cf6, #6366f1)' },
-  group_join_request:  { icon: UserPlus,      accent: '#f59e0b', gradient: 'linear-gradient(135deg, #f59e0b, #f97316)' },
-  group_join_accepted: { icon: PartyPopper,   accent: '#10b981', gradient: 'linear-gradient(135deg, #10b981, #22c55e)' },
-  group_join_rejected: { icon: XCircle,       accent: '#64748b', gradient: 'linear-gradient(135deg, #64748b, #475569)' },
-  group_member_added:  { icon: UserPlus,      accent: '#06b6d4', gradient: 'linear-gradient(135deg, #06b6d4, #3b82f6)' },
-  group_removed:       { icon: UserMinus,     accent: '#f43f5e', gradient: 'linear-gradient(135deg, #f43f5e, #e11d48)' },
-}
-
-function NotifyToastCard({ t, type, avatarUrl, username, subtitle, onOpen }) {
-  const meta = TYPE_META[type]
-  const Icon = meta.icon
-  return (
-    <div
-      onClick={onOpen}
-      style={{
-        position: 'relative', display: 'flex', alignItems: 'center', gap: 12,
-        padding: '12px 16px', borderRadius: 16, minWidth: 270, maxWidth: 330,
-        background: 'rgba(13,13,26,0.94)', border: `1px solid ${meta.accent}40`,
-        backdropFilter: 'blur(16px)', overflow: 'hidden', cursor: 'pointer',
-        boxShadow: `0 8px 32px rgba(0,0,0,0.45), 0 0 0 1px ${meta.accent}18, 0 4px 16px ${meta.accent}30`,
-        transform: t.visible ? 'translateX(0) scale(1)' : 'translateX(110%) scale(0.94)',
-        opacity: t.visible ? 1 : 0,
-        transition: 'all 0.4s cubic-bezier(0.34,1.56,0.64,1)',
-      }}
-    >
-      <div style={{ position: 'relative', flexShrink: 0 }}>
-        <div style={{
-          width: 38, height: 38, borderRadius: '50%', overflow: 'hidden',
-          background: `${meta.accent}22`, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: meta.accent, fontWeight: 700, fontSize: 15, border: `1.5px solid ${meta.accent}55`,
-        }}>
-          {avatarUrl
-            ? <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : (username?.[0]?.toUpperCase() || '?')}
-        </div>
-        <div style={{
-          position: 'absolute', bottom: -3, right: -3, width: 18, height: 18, borderRadius: '50%',
-          background: meta.gradient, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          border: '2px solid #0d0d1a', boxShadow: `0 2px 6px ${meta.accent}60`,
-        }}>
-          <Icon size={10} color="#fff" strokeWidth={3} />
-        </div>
-      </div>
-
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#eae8ff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {username}
-        </p>
-        <p style={{ margin: '2px 0 0', fontSize: 12, color: '#a0a0c0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {subtitle}
-        </p>
-      </div>
-
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: `${meta.accent}20` }}>
-        <div style={{ height: '100%', background: meta.gradient, animation: 'dmToastProgress 3000ms linear forwards' }} />
-      </div>
-      <style>{`@keyframes dmToastProgress { from { width: 100%; } to { width: 0%; } }`}</style>
-    </div>
-  )
-}
 
 // Per-event-type config: toast subtitle + where clicking it should navigate.
 const EVENT_CONFIG = {
@@ -166,23 +98,22 @@ export function ChatNotifyProvider({ children }) {
       }
 
       const { subtitle, path } = build(data)
-      const toastId = `${data.type}-${data.sender_id}-${data.id}`
 
-      xpEventBus.emit({ kind: data.type })
-
-      toast.custom(
-        (t) => (
-          <NotifyToastCard
-            t={t}
-            type={data.type}
-            avatarUrl={data.sender_avatar_url}
-            username={data.sender_username}
-            subtitle={subtitle}
-            onOpen={() => { toast.dismiss(toastId); navigate(path) }}
-          />
-        ),
-        { duration: 3000, id: toastId }
-      )
+      // Hand off to the single shared toast system (XPToast) instead of
+      // rendering our own card here — see XPToast.jsx's `kind: 'social'`
+      // branch. `username`/`avatarUrl` presence is what tells ToastItem to
+      // draw the avatar-circle style instead of the plain icon square.
+      xpEventBus.emit({
+        kind: 'social',
+        toast: {
+          type:      data.type,
+          username:  data.sender_username,
+          avatarUrl: data.sender_avatar_url,
+          subtitle,
+          duration:  3000,
+          onClick:   () => navigate(path),
+        },
+      })
     }
 
     // Catch up on anything that happened while you were offline — a friend

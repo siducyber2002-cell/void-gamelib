@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, memo } from 'react'
-import { Zap, Users, MessageCircle, UserPlus } from 'lucide-react'
+import { Zap, Users, MessageCircle, UserPlus, AtSign, CornerUpLeft, PartyPopper, UserMinus, XCircle } from 'lucide-react'
 
 // ── Event bus ────────────────────────────────────────────────────────────
 // Lets non-component code (e.g. xpService.js) trigger toasts without hooks.
@@ -46,6 +46,55 @@ const TOAST_META = {
     glow: 'rgba(59,130,246,0.4)',
     accent: '#3b82f6',
   },
+  // ── Social events, fed in by ChatNotifyContext via xpEventBus (kind: 'social') ──
+  new_dm: {
+    icon: MessageCircle,
+    gradient: 'linear-gradient(135deg, #3b82f6, #06b6d4)',
+    glow: 'rgba(59,130,246,0.4)',
+    accent: '#3b82f6',
+  },
+  group_mention: {
+    icon: AtSign,
+    gradient: 'linear-gradient(135deg, #8b5cf6, #a855f7)',
+    glow: 'rgba(139,92,246,0.4)',
+    accent: '#8b5cf6',
+  },
+  group_reply: {
+    icon: CornerUpLeft,
+    gradient: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+    glow: 'rgba(139,92,246,0.4)',
+    accent: '#8b5cf6',
+  },
+  group_join_request: {
+    icon: UserPlus,
+    gradient: 'linear-gradient(135deg, #f59e0b, #f97316)',
+    glow: 'rgba(245,158,11,0.4)',
+    accent: '#f59e0b',
+  },
+  group_join_accepted: {
+    icon: PartyPopper,
+    gradient: 'linear-gradient(135deg, #10b981, #22c55e)',
+    glow: 'rgba(16,185,129,0.4)',
+    accent: '#10b981',
+  },
+  group_join_rejected: {
+    icon: XCircle,
+    gradient: 'linear-gradient(135deg, #64748b, #475569)',
+    glow: 'rgba(100,116,139,0.35)',
+    accent: '#64748b',
+  },
+  group_member_added: {
+    icon: UserPlus,
+    gradient: 'linear-gradient(135deg, #06b6d4, #3b82f6)',
+    glow: 'rgba(6,182,212,0.4)',
+    accent: '#06b6d4',
+  },
+  group_removed: {
+    icon: UserMinus,
+    gradient: 'linear-gradient(135deg, #f43f5e, #e11d48)',
+    glow: 'rgba(244,63,94,0.4)',
+    accent: '#f43f5e',
+  },
 }
 
 // Single toast item — wrapped in memo() so it only re-renders when its own
@@ -58,6 +107,11 @@ const ToastItem = memo(function ToastItem({ toast, onRemove }) {
   const [leaving, setLeaving] = useState(false)
   const meta = TOAST_META[toast.type] || TOAST_META.xp
   const Icon = meta.icon
+  // Social toasts (from ChatNotifyContext) set `username` — that's the
+  // signal to show a person's avatar instead of the plain icon square, and
+  // to make the whole card clickable to navigate. XP/level-up toasts never
+  // set this, so their rendering is completely unchanged below.
+  const isSocial = toast.username !== undefined
 
   useEffect(() => {
     // Slide in
@@ -69,8 +123,15 @@ const ToastItem = memo(function ToastItem({ toast, onRemove }) {
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3) }
   }, [])
 
+  const handleClick = () => {
+    if (!toast.onClick) return
+    toast.onClick()
+    onRemove(toast.id)
+  }
+
   return (
     <div
+      onClick={toast.onClick ? handleClick : undefined}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -92,6 +153,7 @@ const ToastItem = memo(function ToastItem({ toast, onRemove }) {
         position: 'relative',
         overflow: 'hidden',
         pointerEvents: 'auto',
+        cursor: toast.onClick ? 'pointer' : 'default',
       }}
     >
       {/* Shimmer sweep */}
@@ -102,15 +164,35 @@ const ToastItem = memo(function ToastItem({ toast, onRemove }) {
         animation: 'xpShimmer 1.8s ease-in-out 1',
       }} />
 
-      {/* Icon circle */}
-      <div style={{
-        width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-        background: meta.gradient,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 4px 14px ${meta.glow}`,
-      }}>
-        <Icon size={18} color="#fff" strokeWidth={2.5} />
-      </div>
+      {isSocial ? (
+        <div style={{ position: 'relative', flexShrink: 0 }}>
+          <div style={{
+            width: 38, height: 38, borderRadius: '50%', overflow: 'hidden',
+            background: `${meta.accent}22`, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: meta.accent, fontWeight: 700, fontSize: 15, border: `1.5px solid ${meta.accent}55`,
+          }}>
+            {toast.avatarUrl
+              ? <img src={toast.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              : (toast.username?.[0]?.toUpperCase() || '?')}
+          </div>
+          <div style={{
+            position: 'absolute', bottom: -3, right: -3, width: 18, height: 18, borderRadius: '50%',
+            background: meta.gradient, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            border: '2px solid #0d0d1a', boxShadow: `0 2px 6px ${meta.accent}60`,
+          }}>
+            <Icon size={10} color="#fff" strokeWidth={3} />
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+          background: meta.gradient,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          boxShadow: `0 4px 14px ${meta.glow}`,
+        }}>
+          <Icon size={18} color="#fff" strokeWidth={2.5} />
+        </div>
+      )}
 
       {/* Text */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -119,10 +201,10 @@ const ToastItem = memo(function ToastItem({ toast, onRemove }) {
           margin: 0, lineHeight: 1.3,
           whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         }}>
-          {toast.title}
+          {isSocial ? toast.username : toast.title}
         </p>
         {toast.subtitle && (
-          <p style={{ fontSize: 11, color: '#8c8aaa', margin: '2px 0 0', lineHeight: 1.3 }}>
+          <p style={{ fontSize: 11, color: '#8c8aaa', margin: '2px 0 0', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {toast.subtitle}
           </p>
         )}
@@ -295,17 +377,23 @@ export function XPToastProvider({ children }) {
     }
   }, [showXP, showLevelUp])
 
-  // Listen for XP events fired from outside React (e.g. xpService.js)
+  // Listen for XP events fired from outside React (e.g. xpService.js), AND
+  // social events fired by ChatNotifyContext (DMs, friend requests, group
+  // mentions/replies/join events) — this is the single point where both
+  // feed into the same toast queue, so there's only ever one toast stack
+  // on screen instead of two competing ones.
   useEffect(() => {
     const unsubscribe = xpEventBus.subscribe((payload) => {
       if (payload.kind === 'xp') {
         showXP(payload.xpEarned, payload.action, payload.detail)
       } else if (payload.kind === 'level_up') {
         showLevelUp(payload.level)
+      } else if (payload.kind === 'social') {
+        addToast(payload.toast)
       }
     })
     return unsubscribe
-  }, [showXP, showLevelUp])
+  }, [showXP, showLevelUp, addToast])
 
   // Every action here is now a stable useCallback reference, so this value
   // object only changes identity when `toasts` itself changes — components
