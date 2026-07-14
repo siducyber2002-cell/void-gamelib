@@ -827,7 +827,7 @@ export default function GroupDetailPage() {
   if (!group) return null
 
   return (
-    <div className="fixed inset-0 z-30 flex flex-col bg-white dark:bg-slate-950 p-2 sm:p-3 lg:static lg:z-auto lg:block lg:bg-transparent lg:dark:bg-transparent lg:p-4 lg:animate-fade-in overflow-hidden lg:overflow-visible">
+    <div className="fixed inset-x-0 top-0 h-dvh z-30 flex flex-col bg-white dark:bg-slate-950 p-2 sm:p-3 lg:static lg:h-auto lg:z-auto lg:block lg:bg-transparent lg:dark:bg-transparent lg:p-4 lg:animate-fade-in overflow-hidden lg:overflow-visible">
       {/* ── First-time guided tour ── */}
       {/* pageKey is fixed (not per-group) — the UI is identical across every
           group, so one "seen" flag covers all of them. Gated on is_member
