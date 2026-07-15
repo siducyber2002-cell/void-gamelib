@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback, useMemo, memo } from 'react'
-import { Zap, Users, MessageCircle, UserPlus, AtSign, CornerUpLeft, PartyPopper, UserMinus, XCircle } from 'lucide-react'
+import { Zap, Users, MessageCircle, UserPlus, AtSign, CornerUpLeft, PartyPopper, UserMinus, XCircle, Crown, Trash2 } from 'lucide-react'
 
 // ── Event bus ────────────────────────────────────────────────────────────
 // Lets non-component code (e.g. xpService.js) trigger toasts without hooks.
@@ -94,6 +94,18 @@ const TOAST_META = {
     gradient: 'linear-gradient(135deg, #f43f5e, #e11d48)',
     glow: 'rgba(244,63,94,0.4)',
     accent: '#f43f5e',
+  },
+  group_ownership_transferred: {
+    icon: Crown,
+    gradient: 'linear-gradient(135deg, #f59e0b, #d97706)',
+    glow: 'rgba(245,158,11,0.45)',
+    accent: '#f59e0b',
+  },
+  group_disbanded: {
+    icon: Trash2,
+    gradient: 'linear-gradient(135deg, #64748b, #334155)',
+    glow: 'rgba(100,116,139,0.4)',
+    accent: '#64748b',
   },
 }
 

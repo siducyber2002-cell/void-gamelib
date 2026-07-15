@@ -20,6 +20,13 @@ const EVENT_CONFIG = {
   group_join_rejected: (d) => ({ subtitle: `Your request to join ${d.group_name} was declined`, path: '/community' }),
   group_member_added:  (d) => ({ subtitle: `Added you to ${d.group_name}`, path: `/community/${d.group_id}` }),
   group_removed:       (d) => ({ subtitle: `You were removed from ${d.group_name}`, path: '/community' }),
+  // These two are pushed live by community.py's transfer_ownership() and
+  // disband_group(), but had no entry here — meaning fireToast's
+  // `if (!build) return` silently swallowed both events and affected
+  // members never found out their ownership changed or their group was
+  // disbanded until they happened to revisit /community.
+  group_ownership_transferred: (d) => ({ subtitle: `You're now the owner of ${d.group_name}`, path: `/community/${d.group_id}` }),
+  group_disbanded:     (d) => ({ subtitle: `${d.group_name} was disbanded`, path: '/community' }),
 }
 
 // Dedupe key so a request/accept only ever toasts once — whether it arrives
