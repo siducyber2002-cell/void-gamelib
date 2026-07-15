@@ -314,6 +314,8 @@ class GroupOut(BaseModel):
     has_pending_request:    bool = False   # true if the CURRENT user has an outstanding request
     pending_requests_count: int = 0        # only meaningful to the owner; 0 for everyone else
 
+    model_config = {"from_attributes": True}
+
 
 class GroupMemberOut(BaseModel):
     id:         int

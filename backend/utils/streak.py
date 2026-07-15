@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
@@ -18,7 +18,7 @@ def update_user_streak(user: User, db: Session) -> StreakResult:
     It's safe to call multiple times per day — it only changes the streak the
     FIRST time it's called on a given calendar day for that user.
     """
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     last = user.last_login_date
 
     if last == today:
