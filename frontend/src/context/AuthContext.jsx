@@ -1,6 +1,10 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
+// NOTE: adjust this path to wherever AllToasts.jsx actually lives relative
+// to this file — xpEventBus is a plain module-level emitter, so it's safe
+// to call from here even though this file has no <XPToastProvider> access.
+import { xpEventBus } from '../components/AllToasts'
 
 const AuthContext = createContext(null)
 
@@ -35,6 +39,24 @@ export function AuthProvider({ children }) {
     setShowStreakPopup(true)
   }, [])
 
+  // The backend only tells us the CURRENT streak count — there's no
+  // "streak_broken" flag to read. So we track the last value we saw
+  // ourselves (persisted in localStorage, same pattern as the popup-shown
+  // guard above) and compare on every checkStreak() call. checkStreak
+  // already runs on mount and on every tab refocus, so this catches a
+  // break the next time the app is opened, without needing a dedicated
+  // backend field. A drop (current < last known, and last known was > 0)
+  // means the user missed a day and the backend reset them — fire once,
+  // then update the baseline so it doesn't fire again for the same drop.
+  const maybeNotifyStreakEnded = useCallback((currentStreak) => {
+    const lastKnownRaw = localStorage.getItem('gl_streak_last_known')
+    const lastKnown = lastKnownRaw !== null ? Number(lastKnownRaw) : null
+    if (lastKnown !== null && lastKnown > 0 && currentStreak < lastKnown) {
+      xpEventBus.emit({ kind: 'streak_ended', previousStreak: lastKnown })
+    }
+    localStorage.setItem('gl_streak_last_known', String(currentStreak))
+  }, [])
+
   const checkStreak = useCallback(async () => {
     try {
       const res = await axios.get('/api/auth/streak')
@@ -42,11 +64,12 @@ export function AuthProvider({ children }) {
         current_streak: res.data.current_streak,
         longest_streak: res.data.longest_streak,
       })
+      maybeNotifyStreakEnded(res.data.current_streak)
       maybeShowStreakPopup(res.data.current_streak, res.data.streak_increased_today)
     } catch {
       // silent — streak check should never break the app
     }
-  }, [maybeShowStreakPopup])
+  }, [maybeShowStreakPopup, maybeNotifyStreakEnded])
 
   const dismissStreakPopup = useCallback(() => setShowStreakPopup(false), [])
 
@@ -130,11 +153,12 @@ export function AuthProvider({ children }) {
         current_streak: res.data.streak.current_streak,
         longest_streak: res.data.streak.longest_streak,
       })
+      maybeNotifyStreakEnded(res.data.streak.current_streak)
       maybeShowStreakPopup(res.data.streak.current_streak, res.data.streak.streak_increased_today)
     }
 
     return res.data
-  }, [fetchMe, maybeShowStreakPopup])
+  }, [fetchMe, maybeShowStreakPopup, maybeNotifyStreakEnded])
 
   const register = useCallback(async (data) => {
     const res = await axios.post('/api/auth/register', data)
@@ -144,6 +168,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem('gl_token')
     localStorage.removeItem('gl_streak_popup_shown')
+    localStorage.removeItem('gl_streak_last_known')
     delete axios.defaults.headers.common['Authorization']
     setToken(null)
     setUser(null)
