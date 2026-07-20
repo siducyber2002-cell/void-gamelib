@@ -4,7 +4,7 @@ import { Toaster } from 'react-hot-toast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { LibraryProvider } from './context/LibraryContext'
-import { XPToastProvider } from './components/XPToast'
+import { XPToastProvider } from './components/AllToasts'
 import { ChatNotifyProvider } from './context/ChatNotifyContext'
 import { authTransitionGate } from './utils/authTransitionGate'
 
