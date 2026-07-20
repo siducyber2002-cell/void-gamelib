@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from './AuthContext'
-import { xpEventBus } from '../components/XPToast'
+import { xpEventBus } from '../components/AllToasts'
 
 const ChatNotifyContext = createContext({
   activeChatFriendId: null,
