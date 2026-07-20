@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext'
 import { XP_LABELS } from '../../utils/xpService'
-import { xpEventBus } from '../XPToast'
+import { xpEventBus } from '../AllToasts'
 import { Sun, Moon, Menu, Bell, Check, X } from 'lucide-react'
 
 // ── Glitch ticker — unchanged ──
