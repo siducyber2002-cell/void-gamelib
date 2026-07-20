@@ -1,7 +1,7 @@
 // xpService.js — import this in any page to award XP
 // Usage: awardXP('watched_trailer', 'Elden Ring 2')
 import axios from 'axios'
-import { xpEventBus } from '../components/XPToast'
+import { xpEventBus } from '../components/AllToasts'
 
 const XP_LABELS = {
   added_game:       { text: 'Added a game to library',  icon: '🎮', xp: 20  },
